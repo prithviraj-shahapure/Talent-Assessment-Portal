@@ -33,11 +33,11 @@ import type { ExamDocument, Question, Difficulty, QuestionType } from "@/lib/typ
 interface Props {
   examId?: string;
   selectedSectionIds: string[];
-  sectionsConfig?: Record<string, { title: string; durationMinutes: number; totalMarks: number; passingMarks: number }>;
+  sectionsConfig?: Record<string, { title: string; durationMinutes: number; totalMarks: number; passingMarks: number; totalQuestions?: number; negativeMarks?: number }>;
   onStageUpdated?: () => void;
 }
 
-const STAGE_OPTIONS = [
+const DEFAULT_STAGE_OPTIONS = [
   { value: "aptitude", label: "Aptitude Test" },
   { value: "logical_reasoning", label: "Logical Reasoning" },
   { value: "custom", label: "Custom Assessment" },
@@ -58,9 +58,22 @@ function getFileIcon(type: string) {
 export function Step4DocumentManagement({
   examId,
   selectedSectionIds,
+  sectionsConfig,
   onStageUpdated,
 }: Props) {
   const toast = useToast();
+
+  const stageOptions =
+    selectedSectionIds && selectedSectionIds.length > 0
+      ? selectedSectionIds.map((id) => ({
+          value: id,
+          label: sectionsConfig?.[id]?.title || id,
+        }))
+      : DEFAULT_STAGE_OPTIONS;
+
+  const [activeTab, setActiveTab] = useState<string>(
+    selectedSectionIds.length > 0 ? selectedSectionIds[0] : "all"
+  );
 
   const [documents, setDocuments] = useState<ExamDocument[]>([]);
   const [loading, setLoading] = useState(true);
@@ -313,32 +326,165 @@ export function Step4DocumentManagement({
     }
   };
 
+  const displayedDocuments =
+    activeTab === "all"
+      ? documents
+      : documents.filter((d) => d.assignedStageId === activeTab);
+
+  const activeStageConfig = activeTab !== "all" ? sectionsConfig?.[activeTab] : null;
+  const activeStageTitle =
+    activeStageConfig?.title ||
+    stageOptions.find((o) => o.value === activeTab)?.label ||
+    activeTab;
+
   return (
     <div className="space-y-6">
       {/* Step 4 Banner */}
       <div className="p-4 bg-navy-900 text-white rounded-lg flex flex-wrap items-center justify-between gap-4">
         <div>
           <h4 className="font-semibold text-sm mb-1 flex items-center gap-1.5">
-            <Sparkles className="h-4 w-4 text-amber-400" /> Independent Question Papers & Section Management
+            <Sparkles className="h-4 w-4 text-amber-400" /> Independent Question Papers & Stage Management
           </h4>
           <p className="text-xs text-white/80 max-w-2xl leading-relaxed">
-            Every uploaded document (.docx, .doc, .pdf, .rtf, .xlsx, .csv, .txt) is preserved as an independent question paper with its own sections, questions, and marks. Never merged across documents.
+            Upload question papers separately for each examination stage. Every document maintains its own sections, questions, and marks without cross-contamination.
           </p>
         </div>
         <Button
           variant="secondary"
-          onClick={() => setUploadOpen(true)}
+          onClick={() => {
+            if (activeTab !== "all") setUploadStageId(activeTab);
+            setUploadOpen(true);
+          }}
           className="bg-white text-navy-900 hover:bg-sand-100 font-semibold"
         >
           <FileUp className="h-4 w-4" /> Upload Question Paper
         </Button>
       </div>
 
+      {/* Stage Navigation Tabs */}
+      <div className="space-y-2">
+        <div className="flex items-center justify-between">
+          <h4 className="font-semibold text-xs text-ink-700 uppercase tracking-wider flex items-center gap-1.5">
+            <Layers className="h-3.5 w-3.5 text-navy-800" /> Examination Stage Question Papers
+          </h4>
+          <span className="text-[11px] text-ink-500">
+            Switch stages to upload and inspect each stage's dedicated paper set.
+          </span>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2 p-1.5 bg-surface border border-line rounded-lg">
+          {selectedSectionIds.map((secId, i) => {
+            const cfg = sectionsConfig?.[secId];
+            const stageDocs = documents.filter((d) => d.assignedStageId === secId);
+            const hasDocs = stageDocs.length > 0;
+            const totalQ = stageDocs.reduce((sum, d) => sum + (d.totalQuestions || 0), 0);
+            const isCurrent = activeTab === secId;
+
+            return (
+              <button
+                key={secId}
+                type="button"
+                onClick={() => {
+                  setActiveTab(secId);
+                  if (stageDocs.length > 0) {
+                    setSelectedDocId(stageDocs[0].id);
+                  }
+                }}
+                className={`px-3 py-2 rounded text-xs font-medium transition-all flex items-center gap-2 ${
+                  isCurrent
+                    ? "bg-navy-900 text-white shadow-xs font-semibold"
+                    : "bg-white hover:bg-sand-50 text-ink-700 border border-line"
+                }`}
+              >
+                <span className="font-mono opacity-60">{i + 1}.</span>
+                <span>{cfg?.title || secId}</span>
+                {hasDocs ? (
+                  <span
+                    className={`text-[10px] px-1.5 py-0.5 rounded-full font-mono font-bold ${
+                      isCurrent ? "bg-emerald-500 text-white" : "bg-emerald-100 text-emerald-800"
+                    }`}
+                  >
+                    {totalQ} Qs
+                  </span>
+                ) : (
+                  <span
+                    className={`text-[10px] px-1.5 py-0.5 rounded-full font-mono ${
+                      isCurrent ? "bg-amber-400 text-navy-900 font-bold" : "bg-amber-100 text-amber-800"
+                    }`}
+                  >
+                    Paper Needed
+                  </span>
+                )}
+              </button>
+            );
+          })}
+
+          <button
+            type="button"
+            onClick={() => setActiveTab("all")}
+            className={`px-3 py-2 rounded text-xs font-medium transition-all flex items-center gap-1.5 ml-auto ${
+              activeTab === "all"
+                ? "bg-navy-900 text-white shadow-xs font-semibold"
+                : "bg-white hover:bg-sand-50 text-ink-700 border border-line"
+            }`}
+          >
+            <Layers className="h-3.5 w-3.5" />
+            <span>All Documents ({documents.length})</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Active Stage Header Card */}
+      {activeTab !== "all" && (
+        <div className="p-4 bg-sand-50 rounded-lg border border-line flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <div className="flex items-center gap-2">
+              <h3 className="font-bold text-navy-900 text-sm">
+                Stage: {activeStageTitle}
+              </h3>
+              <Badge tone={displayedDocuments.length > 0 ? "ok" : "warn"}>
+                {displayedDocuments.length > 0
+                  ? `${displayedDocuments.reduce((s, d) => s + (d.totalQuestions || 0), 0)} Questions Loaded`
+                  : "Question Paper Needed"}
+              </Badge>
+            </div>
+            <div className="text-xs text-ink-600 flex flex-wrap items-center gap-3 mt-1.5 font-mono">
+              {activeStageConfig?.totalQuestions !== undefined && (
+                <span>Target: {activeStageConfig.totalQuestions} questions</span>
+              )}
+              {activeStageConfig?.durationMinutes !== undefined && (
+                <span>Duration: {activeStageConfig.durationMinutes} mins</span>
+              )}
+              {activeStageConfig?.totalMarks !== undefined && (
+                <span>Total Marks: {activeStageConfig.totalMarks}</span>
+              )}
+              {activeStageConfig?.passingMarks !== undefined && (
+                <span>Passing: {activeStageConfig.passingMarks}</span>
+              )}
+            </div>
+          </div>
+
+          <Button
+            onClick={() => {
+              setUploadStageId(activeTab);
+              setUploadOpen(true);
+            }}
+            className="bg-navy-900 text-white hover:bg-navy-800"
+          >
+            <FileUp className="h-4 w-4 mr-1.5" />
+            {displayedDocuments.length > 0
+              ? `Upload Additional Paper for ${activeStageTitle}`
+              : `Upload Question Paper for ${activeStageTitle}`}
+          </Button>
+        </div>
+      )}
+
       {/* A. Uploaded Documents View */}
       <div className="space-y-3">
         <div className="flex items-center justify-between">
           <h4 className="font-semibold text-xs text-ink-700 uppercase tracking-wider flex items-center gap-1.5">
-            <FileText className="h-3.5 w-3.5 text-navy-800" /> Uploaded Documents ({documents.length})
+            <FileText className="h-3.5 w-3.5 text-navy-800" />
+            {activeTab === "all" ? `All Uploaded Documents (${documents.length})` : `Papers for ${activeStageTitle} (${displayedDocuments.length})`}
           </h4>
           <span className="text-[11px] text-ink-500">
             Select a document to inspect sections, edit questions, or assign to an examination stage.
@@ -350,20 +496,30 @@ export function Step4DocumentManagement({
             <Spinner className="mx-auto" />
             <p className="text-xs text-ink-500 mt-2">Loading question documents...</p>
           </div>
-        ) : documents.length === 0 ? (
+        ) : displayedDocuments.length === 0 ? (
           <EmptyState
             icon={<FileUp className="h-8 w-8 text-navy-800" />}
-            title="No question papers uploaded yet"
-            body="Upload Word (.docx), PDF, Excel, or text files to create independent question papers with structured sections."
+            title={activeTab === "all" ? "No question papers uploaded yet" : `No question paper uploaded for "${activeStageTitle}" yet`}
+            body={
+              activeTab === "all"
+                ? "Upload Word (.docx), PDF, Excel, or text files to create independent question papers with structured sections."
+                : `Please upload the question paper specifically for "${activeStageTitle}". Word (.docx), PDF, Excel, or TXT formats are supported.`
+            }
             action={
-              <Button size="sm" onClick={() => setUploadOpen(true)}>
-                <FileUp className="h-4 w-4" /> Upload First Paper
+              <Button
+                size="sm"
+                onClick={() => {
+                  if (activeTab !== "all") setUploadStageId(activeTab);
+                  setUploadOpen(true);
+                }}
+              >
+                <FileUp className="h-4 w-4" /> Upload Paper for {activeTab === "all" ? "Exam" : activeStageTitle}
               </Button>
             }
           />
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-            {documents.map((doc) => {
+            {displayedDocuments.map((doc) => {
               const isSelected = selectedDocId === doc.id;
               const isReprocessing = reprocessingId === doc.id;
 
@@ -403,7 +559,7 @@ export function Step4DocumentManagement({
                       </span>
                       {doc.assignedStageId && (
                         <span className="inline-flex items-center gap-1 bg-amber-50 text-amber-800 px-1.5 py-0.5 rounded border border-amber-200 font-medium">
-                          Stage: {doc.assignedStageId}
+                          Stage: {sectionsConfig?.[doc.assignedStageId]?.title || doc.assignedStageId}
                         </span>
                       )}
                     </div>
@@ -682,7 +838,7 @@ export function Step4DocumentManagement({
               onChange={(e) => setUploadStageId(e.target.value)}
             >
               <option value="">Unassigned (Central Question Paper)</option>
-              {STAGE_OPTIONS.map((opt) => (
+              {stageOptions.map((opt) => (
                 <option key={opt.value} value={opt.value}>
                   {opt.label}
                 </option>
@@ -751,7 +907,7 @@ export function Step4DocumentManagement({
                 value={targetStageId}
                 onChange={(e) => setTargetStageId(e.target.value)}
               >
-                {STAGE_OPTIONS.map((opt) => (
+                {stageOptions.map((opt) => (
                   <option key={opt.value} value={opt.value}>
                     {opt.label}
                   </option>

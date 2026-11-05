@@ -43,7 +43,6 @@ export interface ParseResult {
 }
 
 // Regex patterns
-const SECTION_HEADER_REGEX = /^(?:={3,}\s*)?(?:SECTION|STAGE|PART)?\s*([A-Z0-9\s&/_-]+?)(?:\s*TEST|\s*SECTION|\s*ASSESSMENT)?\s*(?:={3,})?$/i;
 const KNOWN_SECTIONS = [
   "APTITUDE",
   "APTITUDE TEST",
@@ -114,6 +113,95 @@ export function isSectionHeading(line: string): string | null {
   // 4. Markdown headers containing test/assessment/domain keywords (e.g. "### Programming Assessment")
   if (trimmed.startsWith("#") && /(?:test|assessment|section|stage|module|aptitude|reasoning|programming|database|network|systems|verbal|coding)/i.test(clean)) {
     return clean;
+  }
+
+  return null;
+}
+
+interface QuestionStartMatch {
+  number: string;
+  statement: string;
+}
+
+export function matchQuestionStart(line: string): QuestionStartMatch | null {
+  const trimmed = line.trim();
+
+  // Pattern 1: Q1. / Q.1 / Q. 1 / Q 1 / Q-1 / Que. 1 / Question 1 / Question No. 1 / Q.No. 1 / 1. / 1)
+  const qPrefixMatch = trimmed.match(
+    /^(?:Q(?:uestion|ue|ues)?\.?\s*(?:No\.?)?\s*(\d+)|\b(\d+))[\.\:\)\-–]?\s+(.*)$/i
+  );
+  if (qPrefixMatch) {
+    const num = qPrefixMatch[1] || qPrefixMatch[2];
+    const rest = (qPrefixMatch[3] || "").trim();
+    return { number: num, statement: rest };
+  }
+
+  // Pattern 2: Parenthesized or bracketed numbers: (1) statement / [1] statement
+  const bracketNumMatch = trimmed.match(/^[\(\[](\d+)[\)\]]\s*[\.\:\-]?\s*(.*)$/);
+  if (bracketNumMatch) {
+    return { number: bracketNumMatch[1], statement: bracketNumMatch[2].trim() };
+  }
+
+  // Pattern 3: Standalone header: "Question 1", "Question: 1", "Q. 1", "Q1", "Question No. 1"
+  const standaloneMatch = trimmed.match(/^(?:Question|Que|Ques|Q)\s*(?:No\.?)?\s*[:\.\-–]?\s*(\d+)\s*$/i);
+  if (standaloneMatch) {
+    return { number: standaloneMatch[1], statement: "" };
+  }
+
+  // Pattern 4: "Question:" / "Q:" without number
+  const unnumberedMatch = trimmed.match(/^(?:Question|Q)\s*[:\-–]\s*(.+)$/i);
+  if (unnumberedMatch) {
+    return { number: "", statement: unnumberedMatch[1].trim() };
+  }
+
+  return null;
+}
+
+export function parseInlineOptions(line: string): ParsedOption[] | null {
+  const trimmed = line.trim();
+  const regex = /(?:^|\s{2,}|\t|\s+)(?:[\(\[]?([A-Ea-e])[\)\]\.\:]\s*)([^\(\[]+?)(?=(?:\s{2,}|\t|\s+[\(\[]?[A-Ea-e][\)\]\.\:]|$))/g;
+  const matches: ParsedOption[] = [];
+  let m: RegExpExecArray | null;
+
+  while ((m = regex.exec(trimmed)) !== null) {
+    const key = m[1].toUpperCase();
+    const text = m[2].trim();
+    if (text) {
+      matches.push({ key, text });
+    }
+  }
+
+  if (matches.length >= 2) {
+    const keys = matches.map((x) => x.key);
+    if (keys[0] === "A" && keys[1] === "B") {
+      return matches;
+    }
+  }
+
+  return null;
+}
+
+export function matchSingleOption(line: string): ParsedOption | null {
+  const trimmed = line.trim();
+
+  // 1. Letters: A. / A) / (A) / [A] / a. / a) / (a) / [a] / A:
+  const letterMatch = trimmed.match(/^[\(\[]?([A-Ha-h])[\)\]\.\:]\s+(.+)$/);
+  if (letterMatch) {
+    return {
+      key: letterMatch[1].toUpperCase(),
+      text: letterMatch[2].trim(),
+    };
+  }
+
+  // 2. Numeric options: 1) / 2) / (1) / (2) / [1] / [2] (NOT 1. to prevent collision with questions)
+  const numOptMatch = trimmed.match(/^[\(\[]([1-9])[\)\]]\s+(.+)$/) || trimmed.match(/^([1-9])\)\s+(.+)$/);
+  if (numOptMatch) {
+    const keyNum = parseInt(numOptMatch[1], 10);
+    const key = String.fromCharCode(64 + keyNum); // 1 -> A, 2 -> B
+    return {
+      key,
+      text: numOptMatch[2].trim(),
+    };
   }
 
   return null;
@@ -233,37 +321,52 @@ export function parseTxtQuestions(content: string, defaultSection?: string): Par
       continue;
     }
 
-    // Check Question Start:
-    // Format A: Q1. / Q1) / Question 1: / Question:
-    // Format B: 1) / 1. / 1 -
-    const qMatch = line.match(/^(?:Q(?:uestion)?\s*(\d+)[\.\):\-]?|\b(\d+)[\.\)\-])\s+(.+)$/i) || line.match(/^(?:Question|Q)\s*:\s*(.+)$/i);
-    if (qMatch) {
+    // 1. Check Question Start
+    const qStart = matchQuestionStart(line);
+    if (qStart) {
       finalizeQuestion();
       currentQ = {
         sectionTitle: currentSection,
-        questionNumber: qMatch[1] || qMatch[2] || `${questions.length + 1}`,
+        questionNumber: qStart.number || `${questions.length + 1}`,
         options: [],
         correctAnswers: [],
         marks: 1,
         negativeMarks: 0,
         difficulty: "MEDIUM",
       };
-      textBuffer = [qMatch[3] || qMatch[1] || ""];
+      if (qStart.statement) {
+        textBuffer = [qStart.statement];
+      } else {
+        textBuffer = [];
+      }
       readingMode = "QUESTION";
       continue;
     }
 
-    // Check Option Line:
-    // Format A: A. Option / A) Option / (A) Option / [A] Option
-    // Format B: a) Option / a. Option
-    // Format C: - Option / * Option
-    const optMatch = line.match(/^[\(\[]?([A-Ha-h0-9])[\)\]\.\:]\s+(.+)$/);
-    const bulletMatch = line.match(/^[\-\*]\s+(.+)$/);
+    // 2. Check Inline Options: (A)... (B)... (C)... (D)...
+    const inlineOpts = parseInlineOptions(line);
+    if (inlineOpts) {
+      // Question Boundary Protection: If option 'A' arrives and currentQ already has options, finalize previous!
+      if (inlineOpts[0].key === "A" && currentQ && currentQ.options && currentQ.options.length > 0) {
+        const newText = textBuffer.join("\n").trim();
+        textBuffer = [];
+        finalizeQuestion();
+        currentQ = {
+          sectionTitle: currentSection,
+          questionNumber: `${questions.length + 1}`,
+          options: [],
+          correctAnswers: [],
+          marks: 1,
+          negativeMarks: 0,
+          difficulty: "MEDIUM",
+          text: newText,
+        };
+      }
 
-    if (optMatch && (currentQ || textBuffer.length > 0)) {
       if (!currentQ) {
         currentQ = {
           sectionTitle: currentSection,
+          questionNumber: `${questions.length + 1}`,
           options: [],
           correctAnswers: [],
           marks: 1,
@@ -276,13 +379,55 @@ export function parseTxtQuestions(content: string, defaultSection?: string): Par
         textBuffer = [];
       }
       currentQ.options = currentQ.options || [];
-      currentQ.options.push({
-        key: optMatch[1].toUpperCase(),
-        text: optMatch[2].trim(),
-      });
+      currentQ.options.push(...inlineOpts);
       readingMode = "OPTIONS";
       continue;
-    } else if (bulletMatch && (currentQ || textBuffer.length > 0)) {
+    }
+
+    // 3. Check Single Option Line: A. / A) / (A) / [A] / 1) / (1)
+    const singleOpt = matchSingleOption(line);
+    if (singleOpt) {
+      // Question Boundary Protection: If option is 'A' and currentQ already has options, finalize previous!
+      if (singleOpt.key === "A" && currentQ && currentQ.options && currentQ.options.length > 0) {
+        const newText = textBuffer.join("\n").trim();
+        textBuffer = [];
+        finalizeQuestion();
+        currentQ = {
+          sectionTitle: currentSection,
+          questionNumber: `${questions.length + 1}`,
+          options: [],
+          correctAnswers: [],
+          marks: 1,
+          negativeMarks: 0,
+          difficulty: "MEDIUM",
+          text: newText,
+        };
+      }
+
+      if (!currentQ) {
+        currentQ = {
+          sectionTitle: currentSection,
+          questionNumber: `${questions.length + 1}`,
+          options: [],
+          correctAnswers: [],
+          marks: 1,
+          negativeMarks: 0,
+          difficulty: "MEDIUM",
+        };
+      }
+      if (textBuffer.length > 0 && !currentQ.text) {
+        currentQ.text = textBuffer.join("\n").trim();
+        textBuffer = [];
+      }
+      currentQ.options = currentQ.options || [];
+      currentQ.options.push(singleOpt);
+      readingMode = "OPTIONS";
+      continue;
+    }
+
+    // 4. Check Bullet Option: - Option / * Option
+    const bulletMatch = line.match(/^[\-\*]\s+(.+)$/);
+    if (bulletMatch && (currentQ || textBuffer.length > 0)) {
       if (!currentQ) {
         currentQ = {
           sectionTitle: currentSection,
@@ -307,8 +452,7 @@ export function parseTxtQuestions(content: string, defaultSection?: string): Par
       continue;
     }
 
-    // Check Correct Answer:
-    // "Correct Answer: C" / "Answer: B, C" / "Ans: A" / "Correct: A"
+    // 5. Check Correct Answer
     const ansMatch = line.match(/^(?:Correct\s+Answer|Correct|Answer|Ans)\s*[:\-=]\s*(.+)$/i);
     if (ansMatch) {
       if (!currentQ) {
@@ -335,8 +479,7 @@ export function parseTxtQuestions(content: string, defaultSection?: string): Par
       continue;
     }
 
-    // Check Explanation:
-    // "Explanation: 15% of 200 = 30" / "Exp: ..." / "Rationale: ..."
+    // 6. Check Explanation
     const expMatch = line.match(/^(?:Explanation|Exp|Rationale)\s*[:\-=]\s*(.+)$/i);
     if (expMatch) {
       if (currentQ) {
@@ -346,32 +489,28 @@ export function parseTxtQuestions(content: string, defaultSection?: string): Par
       continue;
     }
 
-    // Check Marks:
-    // "Marks: 2" / "Mark: 1" / "Points: 2"
+    // 7. Check Marks
     const marksMatch = line.match(/^(?:Marks?|Points?)\s*[:\-=]\s*([0-9\.]+)/i);
     if (marksMatch && currentQ) {
       currentQ.marks = parseFloat(marksMatch[1]);
       continue;
     }
 
-    // Check Negative Marks:
-    // "Negative Marks: 0.25" / "Negative: 0.5" / "Penalty: 0.25"
+    // 8. Check Negative Marks
     const negMatch = line.match(/^(?:Negative\s*Marks?|Negative|Penalty)\s*[:\-=]\s*([0-9\.]+)/i);
     if (negMatch && currentQ) {
       currentQ.negativeMarks = parseFloat(negMatch[1]);
       continue;
     }
 
-    // Check Difficulty:
-    // "Difficulty: Easy" / "Level: Medium"
+    // 9. Check Difficulty
     const diffMatch = line.match(/^(?:Difficulty|Level)\s*[:\-=]\s*(Easy|Medium|Hard)/i);
     if (diffMatch && currentQ) {
       currentQ.difficulty = diffMatch[1].toUpperCase() as "EASY" | "MEDIUM" | "HARD";
       continue;
     }
 
-    // Check Type:
-    // "Type: MCQ" / "Question Type: Coding"
+    // 10. Check Type
     const typeMatch = line.match(/^(?:Question\s*Type|Type)\s*[:\-=]\s*(.+)$/i);
     if (typeMatch && currentQ) {
       const t = typeMatch[1].toUpperCase().trim();

@@ -7,3 +7,4 @@ echo Starting secure HTTPS tunnel to http://localhost:4000...
 echo.
 tools\cloudflared.exe tunnel --url http://localhost:4000
 pause
+

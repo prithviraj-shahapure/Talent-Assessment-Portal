@@ -182,10 +182,18 @@ export default function ExamWizard() {
       }
 
       // 3. Create all multi-stage sections
+      // Fetch any uploaded documents to auto-bind questions for each stage
+      let existingDocs: any[] = [];
+      try {
+        existingDocs = await api<any[]>("/documents");
+      } catch (err) {
+        console.warn("Could not fetch documents for auto-binding:", err);
+      }
+
       for (let i = 0; i < selectedSectionIds.length; i++) {
         const secId = selectedSectionIds[i];
         const cfg = sectionsConfig[secId];
-        await api(`/exams/${created.id}/sections`, {
+        const createdSec = await api<{ id: string }>(`/exams/${created.id}/sections`, {
           method: "POST",
           body: {
             title: cfg.title,
@@ -200,6 +208,28 @@ export default function ExamWizard() {
             difficultyConfig: { easy: cfg.easyPct, medium: cfg.mediumPct, hard: cfg.hardPct },
           },
         });
+
+        // Auto-bind questions from documents assigned to this stage
+        const matchingDocs = existingDocs.filter((d) => d.assignedStageId === secId);
+        for (const doc of matchingDocs) {
+          try {
+            const docDetail = await api<any>(`/documents/${doc.id}`);
+            const secIds = docDetail.sections?.map((s: any) => s.id) || [];
+            if (secIds.length > 0 && createdSec?.id) {
+              await api("/documents/generate-paper", {
+                method: "POST",
+                body: {
+                  examId: created.id,
+                  documentId: doc.id,
+                  targetSectionId: createdSec.id,
+                  selectedSectionIds: secIds,
+                },
+              });
+            }
+          } catch (bindErr) {
+            console.warn(`Failed to auto-bind doc ${doc.id} to stage ${secId}:`, bindErr);
+          }
+        }
       }
 
       toast(asDraft ? "Multi-stage examination saved as draft" : "Multi-stage examination published successfully!");
