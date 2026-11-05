@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { AlertTriangle, Camera, CameraOff, Eye, EyeOff, Maximize, Mic, MicOff, MonitorPlay, Radio, Users, WifiOff } from "lucide-react";
+import { AlertTriangle, Camera, CameraOff, Eye, EyeOff, Layers, Maximize, Mic, MicOff, MonitorPlay, Radio, Users, WifiOff } from "lucide-react";
 import { api, qs } from "@/lib/api";
 import { useApi } from "@/hooks/useApi";
 import { getSocket } from "@/lib/socket";
@@ -9,7 +9,7 @@ import { clock, EVENT_LABEL, relTime } from "@/lib/format";
 import type { Exam, LiveStatus } from "@/lib/types";
 import { cn } from "@/lib/cn";
 
-type Filter = "all" | "active" | "normal" | "review" | "high" | "submitted" | "disconnected";
+type Filter = "all" | "active" | "violations" | "normal" | "review" | "high" | "submitted" | "disconnected";
 
 export function useNow(ms = 1000) {
   const [now, setNow] = useState(Date.now());
@@ -48,7 +48,7 @@ export default function LiveProctoring() {
     s.on("disconnect", () => setConnected(false));
     const onStatus = (st: LiveStatus) => setRows((m) => new Map(m).set(st.attemptId, { ...m.get(st.attemptId), ...st }));
     const onFrame = (f: { attemptId: string; image: string }) => setFrames((x) => ({ ...x, [f.attemptId]: f.image }));
-    const onEvent = (e: { attemptId: string; type: string; message: string; severity: string; occurredAt: string; riskScore: number; riskLevel: string; weightApplied: number; multiFaceViolations?: number; screenshotViolations?: number }) => {
+    const onEvent = (e: { attemptId: string; type: string; message: string; severity: string; occurredAt: string; riskScore: number; riskLevel: string; weightApplied: number; multiFaceViolations?: number; screenshotViolations?: number; tabSwitchViolations?: number }) => {
       setRows((m) => {
         const cur = m.get(e.attemptId);
         if (!cur) return m;
@@ -60,6 +60,7 @@ export default function LiveProctoring() {
           eventCount: cur.eventCount + 1,
           multiFaceViolations: e.multiFaceViolations !== undefined ? e.multiFaceViolations : cur.multiFaceViolations,
           screenshotViolations: e.screenshotViolations !== undefined ? e.screenshotViolations : cur.screenshotViolations,
+          tabSwitchViolations: e.tabSwitchViolations !== undefined ? e.tabSwitchViolations : cur.tabSwitchViolations,
         });
         return n;
       });
@@ -87,6 +88,7 @@ export default function LiveProctoring() {
   const match = (r: LiveStatus, f: Filter) =>
     f === "all" ||
     (f === "active" && r.status === "ACTIVE") ||
+    (f === "violations" && ((r.tabSwitchViolations ?? 0) > 0 || (r.screenshotViolations ?? 0) > 0)) ||
     (f === "normal" && r.riskLevel === "NORMAL" && r.status === "ACTIVE") ||
     (f === "review" && (r.riskLevel === "LOW" || r.riskLevel === "MEDIUM")) ||
     (f === "high" && r.riskLevel === "HIGH") ||
@@ -125,6 +127,7 @@ export default function LiveProctoring() {
             items={[
               { value: "all", label: "All candidates", count: count("all") },
               { value: "active", label: "Active", count: count("active") },
+              { value: "violations", label: "Violations", count: count("violations") },
               { value: "normal", label: "Normal", count: count("normal") },
               { value: "review", label: "Under review", count: count("review") },
               { value: "high", label: "High concern", count: count("high") },
@@ -185,15 +188,32 @@ export default function LiveProctoring() {
                         <span className="num">
                           Q {Math.min(r.currentQuestion + 1, r.totalQuestions)}/{r.totalQuestions} · {r.answered} answered
                         </span>
-                        <div className="flex items-center gap-2">
-                          {r.multiFaceViolations && r.multiFaceViolations > 0 ? (
-                            <span className={cn("inline-flex items-center gap-1 num font-semibold text-[11px]", r.multiFaceViolations >= 3 ? "text-bad-600" : "text-warn-600")} title="Multiple face detections">
-                              <Users className="h-3 w-3" /> Multi: {r.multiFaceViolations}/2
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          {r.tabSwitchViolations && r.tabSwitchViolations > 0 ? (
+                            <span
+                              className={cn(
+                                "inline-flex items-center gap-1 font-semibold px-1.5 py-0.5 rounded text-[11px]",
+                                r.tabSwitchViolations >= 2 ? "text-bad-700 bg-bad-100 font-bold" : "text-amber-800 bg-amber-100"
+                              )}
+                              title="Tab switch violations"
+                            >
+                              <Layers className="h-3 w-3" /> Tab: {r.tabSwitchViolations}/2
                             </span>
                           ) : null}
                           {r.screenshotViolations && r.screenshotViolations > 0 ? (
-                            <span className="inline-flex items-center gap-1 font-semibold text-bad-600 bg-bad-50 px-1.5 py-0.5 rounded text-[11px]" title="Screenshot / Screen capture violations">
-                              <Camera className="h-3 w-3" /> Snip: {r.screenshotViolations}
+                            <span
+                              className={cn(
+                                "inline-flex items-center gap-1 font-semibold px-1.5 py-0.5 rounded text-[11px]",
+                                r.screenshotViolations >= 2 ? "text-bad-700 bg-bad-100 font-bold" : "text-bad-600 bg-bad-50"
+                              )}
+                              title="Screenshot / Screen capture violations"
+                            >
+                              <Camera className="h-3 w-3" /> Snip: {r.screenshotViolations}/2
+                            </span>
+                          ) : null}
+                          {r.multiFaceViolations && r.multiFaceViolations > 0 ? (
+                            <span className={cn("inline-flex items-center gap-1 num font-semibold text-[11px]", r.multiFaceViolations >= 3 ? "text-bad-600" : "text-warn-600")} title="Multiple face detections">
+                              <Users className="h-3 w-3" /> Multi: {r.multiFaceViolations}/2
                             </span>
                           ) : null}
                           <span className={cn("inline-flex items-center gap-1 num", r.eventCount > 0 && "text-warn-600")}>
@@ -215,11 +235,13 @@ export default function LiveProctoring() {
             <ul className="max-h-[70vh] divide-y divide-line overflow-y-auto scrollbar-thin">
               {feed.map((e, i) => {
                 const isScreenshot = ["SCREENSHOT_ATTEMPT", "SNIPPING_TOOL_DETECTED", "SCREEN_CAPTURE_DETECTED"].includes(e.type);
+                const isTabSwitch = e.type === "TAB_SWITCH";
                 return (
-                  <li key={i} className={cn("cursor-pointer px-3 py-2 hover:bg-navy-50/50 transition-colors", isScreenshot && "bg-bad-50/50 border-l-2 border-l-bad-600")} onClick={() => nav(`/admin/live/${e.attemptId}`)}>
+                  <li key={i} className={cn("cursor-pointer px-3 py-2 hover:bg-navy-50/50 transition-colors", (isScreenshot || isTabSwitch) && "bg-bad-50/50 border-l-2 border-l-bad-600")} onClick={() => nav(`/admin/live/${e.attemptId}`)}>
                     <div className="flex items-center justify-between gap-2">
                       <span className="truncate text-[12.5px] font-medium flex items-center gap-1.5">
                         {isScreenshot && <Camera className="h-3 w-3 text-bad-600 shrink-0" />}
+                        {isTabSwitch && <Layers className="h-3 w-3 text-bad-600 shrink-0" />}
                         <span>{nameOf(e.attemptId)}</span>
                       </span>
                       <Badge tone={e.severity === "HIGH" ? "bad" : e.severity === "MEDIUM" ? "warn" : "steel"}>{e.severity}</Badge>

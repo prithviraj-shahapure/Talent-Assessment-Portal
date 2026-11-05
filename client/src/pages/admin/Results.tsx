@@ -22,6 +22,7 @@ interface Row {
   branch: string;
   stage: PipelineStage;
   status: string;
+  submissionMethod?: string | null;
   score: number;
   maxScore: number;
   percentage: number;
@@ -170,7 +171,16 @@ export default function Results() {
                         <td className="num text-right">{r.score}<span className="text-ink-400">/{r.maxScore}</span></td>
                         <td className="num text-right font-medium">{fmtPct(r.percentage)}</td>
                         {r.sections.map((s) => <td key={s.title} className="num text-right text-[12.5px]">{s.score}<span className="text-ink-400">/{s.max}</span></td>)}
-                        <td><ResultBadge passed={r.passed} pending={r.needsManualEval} /></td>
+                        <td>
+                          <div className="flex items-center gap-1.5">
+                            <ResultBadge passed={r.passed} pending={r.needsManualEval} />
+                            {r.submissionMethod === "AUTO_SUBMITTED_VIOLATION" && (
+                              <span title="Auto-submitted due to malpractice violation">
+                                <Badge tone="bad">Violation</Badge>
+                              </span>
+                            )}
+                          </div>
+                        </td>
                         <td className="num whitespace-nowrap text-right text-[12.5px]">{fmtDuration(r.timeTakenSec)}</td>
                         <td><RiskBadge level={r.riskLevel} score={r.riskScore} /></td>
                         <td><StageBadge stage={r.stage} /></td>

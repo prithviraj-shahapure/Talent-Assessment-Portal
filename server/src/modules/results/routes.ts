@@ -67,6 +67,7 @@ export async function leaderboard(examId: string): Promise<{ exam: { id: string;
       stage: a.candidate.stage,
       attemptNo: a.attemptNo,
       status: a.status,
+      submissionMethod: a.submissionMethod,
       score: a.score ?? 0,
       maxScore: a.maxScore ?? 0,
       percentage: a.percentage ?? 0,

@@ -196,6 +196,50 @@ attemptsRouter.post(
 );
 
 // ───────────── State (questions without answers keys) ─────────────
+async function getViolationCounts(attemptId: string) {
+  const events = await prisma.proctorEvent.findMany({
+    where: {
+      attemptId,
+      type: {
+        in: [
+          "TAB_SWITCH",
+          "SCREENSHOT_ATTEMPT",
+          "SNIPPING_TOOL_DETECTED",
+          "SCREEN_CAPTURE_DETECTED",
+          "MULTIPLE_FACES",
+        ],
+      },
+    },
+    orderBy: { occurredAt: "asc" },
+    select: { type: true, occurredAt: true },
+  });
+
+  let tabSwitch = 0;
+  let lastTab = 0;
+  let screenshot = 0;
+  let lastScreenshot = 0;
+  let multiFace = 0;
+
+  for (const ev of events) {
+    const t = ev.occurredAt.getTime();
+    if (ev.type === "TAB_SWITCH") {
+      if (t - lastTab > 2000) {
+        tabSwitch++;
+        lastTab = t;
+      }
+    } else if (["SCREENSHOT_ATTEMPT", "SNIPPING_TOOL_DETECTED", "SCREEN_CAPTURE_DETECTED"].includes(ev.type)) {
+      if (t - lastScreenshot > 2000) {
+        screenshot++;
+        lastScreenshot = t;
+      }
+    } else if (ev.type === "MULTIPLE_FACES") {
+      multiFace++;
+    }
+  }
+
+  return { tabSwitch, screenshot, multiFace };
+}
+
 attemptsRouter.get(
   "/:id/state",
   ah(async (req, res) => {
@@ -210,15 +254,23 @@ attemptsRouter.get(
     const fresh = await prisma.attempt.findUniqueOrThrow({ where: { id: a.id }, include: { exam: true, answers: true, sectionAttempts: true, evidence: { where: { kind: "VERIFICATION_PHOTO" }, select: { id: true } } } });
     const paper = fresh.paper as unknown as Paper;
     const curInfo = ((fresh.clientInfo ?? {}) as Record<string, unknown>);
-    const info = curInfo as { webcamRequired?: boolean; microphoneRequired?: boolean; evidenceConsent?: boolean; autoSubmittedReason?: string; multiFaceViolations?: number };
-    const multiFaceCount = await prisma.proctorEvent.count({ where: { attemptId: a.id, type: "MULTIPLE_FACES" } });
-    const autoSubmittedReason = (info.autoSubmittedReason ?? (fresh.status === "AUTO_SUBMITTED" ? "TIME_UP" : null)) as string | null;
+    const info = curInfo as { webcamRequired?: boolean; microphoneRequired?: boolean; evidenceConsent?: boolean; autoSubmittedReason?: string; multiFaceViolations?: number; tabSwitchViolations?: number; screenshotViolations?: number };
+    const counts = await getViolationCounts(a.id);
+    const multiFaceCount = counts.multiFace;
+    const tabSwitchCount = counts.tabSwitch;
+    const screenshotCount = counts.screenshot;
+    const autoSubmittedReason = (info.autoSubmittedReason ?? (fresh.status === "AUTO_SUBMITTED" ? (fresh.submissionMethod ?? "TIME_UP") : null)) as string | null;
     const base = {
       id: fresh.id,
       status: fresh.status,
       serverNow: new Date().toISOString(),
       multiFaceCount,
+      tabSwitchCount,
+      screenshotCount,
+      tabSwitchViolations: tabSwitchCount,
+      screenshotViolations: screenshotCount,
       autoSubmittedReason,
+      submissionMethod: fresh.submissionMethod ?? (fresh.status === "ADMIN_SUBMITTED" ? "ADMIN_FORCE" : fresh.status === "AUTO_SUBMITTED" ? (info.autoSubmittedReason ?? "TIME_UP") : "CANDIDATE"),
       exam: {
         id: fresh.exam.id,
         title: fresh.exam.title,
@@ -571,23 +623,128 @@ attemptsRouter.post(
             await audit(req, "attempt.auto_submit_multiple_faces", "Attempt", a.id, { violationCount: multiCount });
           }
         }
-      } else if (["SCREENSHOT_ATTEMPT", "SNIPPING_TOOL_DETECTED", "SCREEN_CAPTURE_DETECTED"].includes(ev.type)) {
-        const screenshotCount = await prisma.proctorEvent.count({
-          where: { attemptId: a.id, type: { in: ["SCREENSHOT_ATTEMPT", "SNIPPING_TOOL_DETECTED", "SCREEN_CAPTURE_DETECTED"] } },
+      } else if (ev.type === "TAB_SWITCH") {
+        const counts = await getViolationCounts(a.id);
+        const tabSwitchCount = counts.tabSwitch;
+        const curScreenshotCount = counts.screenshot;
+        const curInfo = ((a.clientInfo ?? {}) as Record<string, unknown>);
+        const isAutoSubmit = tabSwitchCount >= 2;
+
+        await prisma.attempt.update({
+          where: { id: a.id },
+          data: {
+            clientInfo: {
+              ...curInfo,
+              tabSwitchViolations: tabSwitchCount,
+              ...(isAutoSubmit ? { autoSubmittedReason: "AUTO_SUBMITTED_VIOLATION", violationCategory: "TAB_SWITCH" } : {}),
+            },
+            ...(isAutoSubmit ? { submissionMethod: "AUTO_SUBMITTED_VIOLATION" } : {}),
+          },
         });
-        liveHub.update(a.id, { screenshotViolations: screenshotCount });
+
+        liveHub.update(a.id, { tabSwitchViolations: tabSwitchCount });
+
         liveHub.event(a.examId, a.id, {
           id: r.event.id,
           type: r.event.type,
-          severity: r.event.severity,
-          message: r.event.message,
+          severity: isAutoSubmit ? "HIGH" : "MEDIUM",
+          message: isAutoSubmit
+            ? "2nd Tab Switch Violation: Examination auto-submitted (maximum limit 2 reached)"
+            : `Tab switch detected (Violation ${tabSwitchCount}/2)`,
+          occurredAt: r.event.occurredAt,
+          weightApplied: r.event.weightApplied,
+          riskScore: r.riskScore,
+          riskLevel: r.riskLevel,
+          hasEvidence: false,
+          tabSwitchViolations: tabSwitchCount,
+          screenshotViolations: curScreenshotCount,
+          autoSubmitted: isAutoSubmit,
+          autoSubmittedReason: isAutoSubmit ? "AUTO_SUBMITTED_VIOLATION" : undefined,
+          violationCategory: isAutoSubmit ? "TAB_SWITCH" : undefined,
+        });
+
+        if (isAutoSubmit) {
+          const freshAttempt = await prisma.attempt.findUnique({ where: { id: a.id } });
+          if (freshAttempt && freshAttempt.status === "IN_PROGRESS") {
+            await finalizeAttempt(a.id, true);
+            await audit(req, "attempt.auto_submit_violation", "Attempt", a.id, {
+              category: "TAB_SWITCH",
+              violationCount: tabSwitchCount,
+              triggerEvent: ev.type,
+            });
+            if (a.sessionId) {
+              await prisma.sessionAuditLog.create({
+                data: {
+                  sessionId: a.sessionId,
+                  candidateId: a.candidateId,
+                  eventType: "VIOLATION_AUTO_SUBMIT",
+                  metadata: { category: "TAB_SWITCH", count: tabSwitchCount, attemptId: a.id },
+                },
+              });
+            }
+          }
+        }
+      } else if (["SCREENSHOT_ATTEMPT", "SNIPPING_TOOL_DETECTED", "SCREEN_CAPTURE_DETECTED"].includes(ev.type)) {
+        const counts = await getViolationCounts(a.id);
+        const screenshotCount = counts.screenshot;
+        const curTabSwitchCount = counts.tabSwitch;
+        const curInfo = ((a.clientInfo ?? {}) as Record<string, unknown>);
+        const isAutoSubmit = screenshotCount >= 2;
+
+        await prisma.attempt.update({
+          where: { id: a.id },
+          data: {
+            clientInfo: {
+              ...curInfo,
+              screenshotViolations: screenshotCount,
+              ...(isAutoSubmit ? { autoSubmittedReason: "AUTO_SUBMITTED_VIOLATION", violationCategory: "SCREENSHOT" } : {}),
+            },
+            ...(isAutoSubmit ? { submissionMethod: "AUTO_SUBMITTED_VIOLATION" } : {}),
+          },
+        });
+
+        liveHub.update(a.id, { screenshotViolations: screenshotCount });
+
+        liveHub.event(a.examId, a.id, {
+          id: r.event.id,
+          type: r.event.type,
+          severity: isAutoSubmit ? "HIGH" : r.event.severity,
+          message: isAutoSubmit
+            ? "2nd Screenshot Violation: Examination auto-submitted (maximum limit 2 reached)"
+            : `Screenshot shortcut detected (Violation ${screenshotCount}/2)`,
           occurredAt: r.event.occurredAt,
           weightApplied: r.event.weightApplied,
           riskScore: r.riskScore,
           riskLevel: r.riskLevel,
           hasEvidence: !!r.event.evidenceId,
+          tabSwitchViolations: curTabSwitchCount,
           screenshotViolations: screenshotCount,
+          autoSubmitted: isAutoSubmit,
+          autoSubmittedReason: isAutoSubmit ? "AUTO_SUBMITTED_VIOLATION" : undefined,
+          violationCategory: isAutoSubmit ? "SCREENSHOT" : undefined,
         });
+
+        if (isAutoSubmit) {
+          const freshAttempt = await prisma.attempt.findUnique({ where: { id: a.id } });
+          if (freshAttempt && freshAttempt.status === "IN_PROGRESS") {
+            await finalizeAttempt(a.id, true);
+            await audit(req, "attempt.auto_submit_violation", "Attempt", a.id, {
+              category: "SCREENSHOT",
+              violationCount: screenshotCount,
+              triggerEvent: ev.type,
+            });
+            if (a.sessionId) {
+              await prisma.sessionAuditLog.create({
+                data: {
+                  sessionId: a.sessionId,
+                  candidateId: a.candidateId,
+                  eventType: "VIOLATION_AUTO_SUBMIT",
+                  metadata: { category: "SCREENSHOT", count: screenshotCount, attemptId: a.id },
+                },
+              });
+            }
+          }
+        }
       } else {
         liveHub.event(a.examId, a.id, {
           id: r.event.id,
@@ -602,7 +759,20 @@ attemptsRouter.post(
         });
       }
     }
-    res.json({ accepted, ...(last ?? {}) });
+    const finalCounts = await getViolationCounts(a.id);
+    const freshAttempt = await prisma.attempt.findUnique({ where: { id: a.id }, select: { status: true, clientInfo: true, submissionMethod: true } });
+    const freshInfo = (freshAttempt?.clientInfo ?? {}) as Record<string, unknown>;
+    const isAutoSubmitted = freshAttempt?.status === "AUTO_SUBMITTED" || finalCounts.tabSwitch >= 2 || finalCounts.screenshot >= 2;
+
+    res.json({
+      accepted,
+      tabSwitchViolations: finalCounts.tabSwitch,
+      screenshotViolations: finalCounts.screenshot,
+      autoSubmitted: isAutoSubmitted,
+      autoSubmittedReason: (freshInfo.autoSubmittedReason as string) ?? (isAutoSubmitted ? "AUTO_SUBMITTED_VIOLATION" : undefined),
+      violationCategory: (freshInfo.violationCategory as string) ?? undefined,
+      ...(last ?? {}),
+    });
   }),
 );
 

@@ -15,6 +15,8 @@ export interface ProctorConfig {
   livePreviewIntervalSec: number;
   initialMultiFaceCount?: number;
   maxAllowedMultiFace?: number;
+  initialTabSwitchCount?: number;
+  initialScreenshotCount?: number;
 }
 
 export interface ProctorStatus {
@@ -66,11 +68,14 @@ export class ProctorSession {
   private lastAudioFlag = 0;
   private cameraOk = true;
   private micOk = true;
+  tabSwitchViolations = 0;
+  screenshotViolations = 0;
   status: ProctorStatus;
   onStatus: (s: ProctorStatus) => void = () => undefined;
   onWarning: (w: Warning | null, key?: string) => void = () => undefined;
   onEventLogged: (type: string) => void = () => undefined;
   onAutoSubmit?: (reason: string, violationCount: number) => void;
+  onViolationUpdate?: (violations: { tabSwitch: number; screenshot: number; maxAllowed: number }) => void;
 
   constructor(video: HTMLVideoElement, stream: MediaStream | null, socket: Socket, cfg: ProctorConfig) {
     this.video = video;
@@ -78,6 +83,8 @@ export class ProctorSession {
     this.socket = socket;
     this.cfg = cfg;
     this.multiFaceCount = cfg.initialMultiFaceCount ?? 0;
+    this.tabSwitchViolations = cfg.initialTabSwitchCount ?? 0;
+    this.screenshotViolations = cfg.initialScreenshotCount ?? 0;
     this.status = {
       camera: cfg.requireWebcam ? (stream?.getVideoTracks()[0]?.readyState === "live" ? "ON" : "OFF") : "NOT_REQUIRED",
       microphone: cfg.requireMicrophone ? (stream?.getAudioTracks()[0]?.readyState === "live" ? "ON" : "OFF") : "NOT_REQUIRED",
@@ -161,8 +168,7 @@ export class ProctorSession {
     if (typeof navigator !== "undefined" && navigator.mediaDevices && typeof navigator.mediaDevices.getDisplayMedia === "function") {
       const origGetDisplayMedia = navigator.mediaDevices.getDisplayMedia.bind(navigator.mediaDevices);
       navigator.mediaDevices.getDisplayMedia = async (...args) => {
-        this.log("SCREEN_CAPTURE_DETECTED", "Browser screen-sharing or display capture invoked");
-        this.onWarning({ key: "screencap", text: "Screen sharing and screen capture are strictly prohibited during the examination.", tone: "bad" });
+        this.recordScreenshotViolation("SCREEN_CAPTURE_DETECTED", "Browser screen-sharing or display capture invoked");
         return origGetDisplayMedia(...args);
       };
       this.cleanups.push(() => {
@@ -172,21 +178,46 @@ export class ProctorSession {
 
     on(window, "pagehide", () => (unloading = true));
     on(document, "visibilitychange", () => {
-      if (unloading) return;
+      if (unloading || this.stopped) return;
       if (document.visibilityState === "hidden") {
-        this.log("TAB_SWITCH", "Examination tab hidden (switched tab or minimised window)");
         this.status.focused = false;
+        this.tabSwitchViolations = Math.min(2, this.tabSwitchViolations + 1);
+        this.log("TAB_SWITCH", "Examination tab hidden (switched tab or minimised window)");
+        this.onViolationUpdate?.({
+          tabSwitch: this.tabSwitchViolations,
+          screenshot: this.screenshotViolations,
+          maxAllowed: 2,
+        });
+        if (this.tabSwitchViolations === 1) {
+          this.onWarning({
+            key: "tab_switch_violation",
+            text: "Warning: Examination policy violation detected. One more violation of this type will automatically submit your examination.",
+            tone: "bad",
+          });
+        } else if (this.tabSwitchViolations >= 2) {
+          this.onWarning({
+            key: "tab_switch_violation",
+            text: "Maximum violation limit reached. Your examination has been automatically submitted.",
+            tone: "bad",
+          });
+          this.onAutoSubmit?.("TAB_SWITCH", this.tabSwitchViolations);
+        }
       } else {
         this.status.focused = document.hasFocus();
-        this.onWarning({ key: "tab", text: "Switching tabs or windows is recorded. Stay on the examination page.", tone: "bad" });
+        if (this.tabSwitchViolations === 1) {
+          this.onWarning({
+            key: "tab_switch_violation",
+            text: "Warning: Examination policy violation detected. One more violation of this type will automatically submit your examination.",
+            tone: "bad",
+          });
+        }
       }
       this.emitStatus();
     });
     on(window, "blur", () => {
       // If window blur happened right after a screenshot key/modifier, capture snipping tool event
       if (Date.now() - lastScreenshotKeyTime < 1500) {
-        this.log("SNIPPING_TOOL_DETECTED", "Screen snipping utility caused window focus loss");
-        this.onWarning({ key: "screenshot", text: "Screen snipping tools are prohibited during the examination.", tone: "bad" });
+        this.recordScreenshotViolation("SNIPPING_TOOL_DETECTED", "Screen snipping utility caused window focus loss");
       }
       // When the tab is hidden the visibilitychange event covers it
       setTimeout(() => {
@@ -238,8 +269,7 @@ export class ProctorSession {
         if (e.key === "PrintScreen" || e.code === "PrintScreen" || e.keyCode === 44) {
           e.preventDefault();
           lastScreenshotKeyTime = Date.now();
-          this.log("SCREENSHOT_ATTEMPT", "PrintScreen shortcut detected", { key: e.key, code: e.code });
-          this.onWarning({ key: "screenshot", text: "Taking screenshots is strictly prohibited during the examination.", tone: "bad" });
+          this.recordScreenshotViolation("SCREENSHOT_ATTEMPT", "PrintScreen shortcut detected", { key: e.key, code: e.code });
           return;
         }
 
@@ -248,8 +278,7 @@ export class ProctorSession {
         if (isWinShiftS) {
           e.preventDefault();
           lastScreenshotKeyTime = Date.now();
-          this.log("SNIPPING_TOOL_DETECTED", "Windows Screen Snipping shortcut (Win+Shift+S) detected", { shortcut: "Win+Shift+S" });
-          this.onWarning({ key: "screenshot", text: "Screen snipping tools are prohibited during the examination.", tone: "bad" });
+          this.recordScreenshotViolation("SNIPPING_TOOL_DETECTED", "Windows Screen Snipping shortcut (Win+Shift+S) detected", { shortcut: "Win+Shift+S" });
           return;
         }
 
@@ -258,16 +287,15 @@ export class ProctorSession {
         if (isMacScreenshot) {
           e.preventDefault();
           lastScreenshotKeyTime = Date.now();
-          this.log("SCREENSHOT_ATTEMPT", `macOS screen capture shortcut (Cmd+Shift+${e.key}) detected`, { shortcut: `Cmd+Shift+${e.key}` });
-          this.onWarning({ key: "screenshot", text: "Taking screenshots is strictly prohibited during the examination.", tone: "bad" });
+          this.recordScreenshotViolation("SCREENSHOT_ATTEMPT", `macOS screen capture shortcut (Cmd+Shift+${e.key}) detected`, { shortcut: `Cmd+Shift+${e.key}` });
           return;
         }
 
         // 4. Print or Save-as-PDF shortcut (Ctrl/Cmd + P)
         if (mod && k === "p") {
           e.preventDefault();
-          this.log("SCREENSHOT_ATTEMPT", "Print / Save-as-PDF shortcut (Ctrl/Cmd+P) blocked", { shortcut: "Ctrl/Cmd+P" });
-          this.onWarning({ key: "screenshot", text: "Printing or exporting examination content is prohibited.", tone: "bad" });
+          lastScreenshotKeyTime = Date.now();
+          this.recordScreenshotViolation("SCREENSHOT_ATTEMPT", "Print / Save-as-PDF shortcut (Ctrl/Cmd+P) blocked", { shortcut: "Ctrl/Cmd+P" });
           return;
         }
 
@@ -295,9 +323,10 @@ export class ProctorSession {
       (ev) => {
         const e = ev as KeyboardEvent;
         if (e.key === "PrintScreen" || e.code === "PrintScreen" || e.keyCode === 44) {
-          lastScreenshotKeyTime = Date.now();
-          this.log("SCREENSHOT_ATTEMPT", "PrintScreen key released (screenshot suspected)", { event: "keyup" });
-          this.onWarning({ key: "screenshot", text: "Taking screenshots is strictly prohibited.", tone: "bad" });
+          if (Date.now() - lastScreenshotKeyTime > 1500) {
+            lastScreenshotKeyTime = Date.now();
+            this.recordScreenshotViolation("SCREENSHOT_ATTEMPT", "PrintScreen key released (screenshot suspected)", { event: "keyup" });
+          }
         }
       },
       { capture: true },
@@ -457,6 +486,31 @@ export class ProctorSession {
     }
   }
 
+  private recordScreenshotViolation(eventType: string, message: string, meta?: Record<string, unknown>) {
+    if (this.stopped) return;
+    this.screenshotViolations = Math.min(2, this.screenshotViolations + 1);
+    this.log(eventType, message, meta);
+    this.onViolationUpdate?.({
+      tabSwitch: this.tabSwitchViolations,
+      screenshot: this.screenshotViolations,
+      maxAllowed: 2,
+    });
+    if (this.screenshotViolations === 1) {
+      this.onWarning({
+        key: "screenshot_violation",
+        text: "Warning: Examination policy violation detected. One more violation of this type will automatically submit your examination.",
+        tone: "bad",
+      });
+    } else if (this.screenshotViolations >= 2) {
+      this.onWarning({
+        key: "screenshot_violation",
+        text: "Maximum violation limit reached. Your examination has been automatically submitted.",
+        tone: "bad",
+      });
+      this.onAutoSubmit?.("SCREENSHOT", this.screenshotViolations);
+    }
+  }
+
   // ───── Event logging ─────
   log(type: string, message?: string, meta?: Record<string, unknown>) {
     if (this.stopped) return;
@@ -481,7 +535,7 @@ export class ProctorSession {
       return;
     }
     this.queue.push(ev);
-    if (["MULTIPLE_FACES", "CAMERA_DISCONNECTED", "FULLSCREEN_EXIT", "TAB_SWITCH"].includes(type)) this.flush();
+    if (["MULTIPLE_FACES", "CAMERA_DISCONNECTED", "FULLSCREEN_EXIT", "TAB_SWITCH", "SCREENSHOT_ATTEMPT", "SNIPPING_TOOL_DETECTED", "SCREEN_CAPTURE_DETECTED"].includes(type)) this.flush();
   }
 
   private flushing = false;
@@ -490,7 +544,30 @@ export class ProctorSession {
     this.flushing = true;
     const batch = this.queue.splice(0, 50);
     try {
-      await api(`/attempts/${this.cfg.attemptId}/events`, { body: { events: batch }, keepalive });
+      const res = await api<{
+        accepted: number;
+        tabSwitchViolations?: number;
+        screenshotViolations?: number;
+        autoSubmitted?: boolean;
+        autoSubmittedReason?: string;
+        violationCategory?: string;
+      }>(`/attempts/${this.cfg.attemptId}/events`, { body: { events: batch }, keepalive });
+
+      if (typeof res.tabSwitchViolations === "number") {
+        this.tabSwitchViolations = Math.max(this.tabSwitchViolations, res.tabSwitchViolations);
+      }
+      if (typeof res.screenshotViolations === "number") {
+        this.screenshotViolations = Math.max(this.screenshotViolations, res.screenshotViolations);
+      }
+      this.onViolationUpdate?.({
+        tabSwitch: this.tabSwitchViolations,
+        screenshot: this.screenshotViolations,
+        maxAllowed: 2,
+      });
+
+      if (res.autoSubmitted || this.tabSwitchViolations >= 2 || this.screenshotViolations >= 2) {
+        this.onAutoSubmit?.(res.violationCategory || res.autoSubmittedReason || "AUTO_SUBMITTED_VIOLATION", 2);
+      }
     } catch {
       this.queue.unshift(...batch); // retry later
     } finally {
@@ -513,6 +590,8 @@ export class ProctorSession {
       audioLevel: Math.round(this.status.audioLevel * 100) / 100,
       currentQuestion: this.currentQuestion,
       multiFaceViolations: this.multiFaceCount,
+      tabSwitchViolations: this.tabSwitchViolations,
+      screenshotViolations: this.screenshotViolations,
     });
   }
   private sendFrame() {

@@ -9,9 +9,20 @@ import { liveHub } from "../sockets/hub";
  */
 export async function finalizeAttempt(attemptId: string, auto: boolean) {
   const now = new Date();
+  const existing = await prisma.attempt.findUnique({
+    where: { id: attemptId },
+    select: { submissionMethod: true },
+  });
+  const defaultMethod = auto ? "TIME_UP" : "CANDIDATE";
+  const finalMethod = existing?.submissionMethod || defaultMethod;
+
   const locked = await prisma.attempt.updateMany({
     where: { id: attemptId, status: "IN_PROGRESS" },
-    data: { status: auto ? "AUTO_SUBMITTED" : "SUBMITTED", submittedAt: now },
+    data: {
+      status: auto ? "AUTO_SUBMITTED" : "SUBMITTED",
+      submittedAt: now,
+      submissionMethod: finalMethod,
+    },
   });
   if (locked.count === 0) return prisma.attempt.findUnique({ where: { id: attemptId } });
 

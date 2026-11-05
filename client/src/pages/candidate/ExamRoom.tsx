@@ -36,6 +36,9 @@ interface State {
   isTerminated?: boolean;
   terminatedReason?: string | null;
   submissionMethod?: string | null;
+  tabSwitchViolations?: number;
+  screenshotViolations?: number;
+  autoSubmittedReason?: string | null;
   serverNow: string;
   verificationDone: boolean;
   deadlineAt: string;
@@ -72,6 +75,9 @@ export default function ExamRoom() {
   const [sectionOpen, setSectionOpen] = useState(false);
   const [ack, setAck] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [tabSwitchViolations, setTabSwitchViolations] = useState(0);
+  const [screenshotViolations, setScreenshotViolations] = useState(0);
+  const [violationModal, setViolationModal] = useState<string | null>(null);
   const dirty = useRef<Map<string, Ans & { questionId: string }>>(new Map());
   const videoRef = useRef<HTMLVideoElement>(null);
   const session = useRef<ProctorSession | null>(null);
@@ -94,6 +100,8 @@ export default function ExamRoom() {
       }
       setOffset(new Date(s.serverNow).getTime() - Date.now());
       setState(s);
+      if (typeof s.tabSwitchViolations === "number") setTabSwitchViolations(s.tabSwitchViolations);
+      if (typeof s.screenshotViolations === "number") setScreenshotViolations(s.screenshotViolations);
       setSectionIdx(s.currentSection);
       const a: Record<string, Ans> = {};
       s.sections.forEach((sec) => sec.questions.forEach((q) => !q.hidden && q.answer && (a[q.id] = q.answer)));
@@ -170,9 +178,27 @@ export default function ExamRoom() {
       requireMicrophone: s.exam.requireMicrophone,
       requireFullscreen: s.exam.requireFullscreen,
       evidenceCapture: s.exam.evidenceCapture,
+      initialTabSwitchCount: s.tabSwitchViolations ?? tabSwitchViolations,
+      initialScreenshotCount: s.screenshotViolations ?? screenshotViolations,
       ...ps,
     });
     sess.onStatus = setStatus;
+    sess.onViolationUpdate = (v) => {
+      setTabSwitchViolations(v.tabSwitch);
+      setScreenshotViolations(v.screenshot);
+    };
+    sess.onAutoSubmit = async (_reason) => {
+      setViolationModal("Maximum violation limit reached. Your examination has been automatically submitted.");
+      await flush();
+      try {
+        await api(`/attempts/${attemptId}/submit`, { body: { reason: "AUTO_SUBMITTED_VIOLATION" } });
+      } catch {
+        /* backend auto-submits */
+      }
+      setTimeout(() => {
+        finish();
+      }, 1500);
+    };
     sess.onWarning = (w, key) =>
       setWarnings((list) => {
         const k = w?.key ?? key;
@@ -646,6 +672,76 @@ export default function ExamRoom() {
             <div className={cn("num mt-1 text-[30px] font-medium leading-none", remaining < 5 * 60_000 ? "text-bad-600" : "text-ink-900")}>{clock(remaining)}</div>
             {sectionRemaining !== null && <div className="num mt-1.5 text-[12px] text-ink-500">Section: {clock(sectionRemaining)}</div>}
           </div>
+
+          {/* LIVE VIOLATION COUNTER */}
+          <div className="rounded border border-line bg-canvas/60 p-3 text-xs space-y-2">
+            <div className="flex items-center justify-between border-b border-line pb-1.5">
+              <span className="font-bold uppercase tracking-wider text-[11px] text-navy-950 flex items-center gap-1.5">
+                <ShieldAlert className="h-3.5 w-3.5 text-navy-800" />
+                VIOLATION STATUS
+              </span>
+              <span className="text-[10px] text-ink-500 font-medium">Limit: 2</span>
+            </div>
+
+            <div className="space-y-1.5 pt-0.5">
+              {/* Tab Switching */}
+              <div className="flex items-center justify-between">
+                <span className="text-ink-700 font-medium flex items-center gap-1.5">
+                  <span
+                    className={cn(
+                      "h-2 w-2 rounded-full",
+                      tabSwitchViolations === 0 ? "bg-ok-600" : tabSwitchViolations === 1 ? "bg-amber-500 animate-pulse" : "bg-bad-600"
+                    )}
+                  />
+                  Tab Switching
+                </span>
+                <span
+                  className={cn(
+                    "num font-mono px-1.5 py-0.5 rounded text-[11.5px] font-bold border",
+                    tabSwitchViolations === 0 && "bg-ok-50 text-ok-700 border-ok-200",
+                    tabSwitchViolations === 1 && "bg-amber-100 text-amber-800 border-amber-300 font-extrabold",
+                    tabSwitchViolations >= 2 && "bg-bad-100 text-bad-700 border-bad-300 font-extrabold"
+                  )}
+                >
+                  {tabSwitchViolations}/2
+                </span>
+              </div>
+
+              {/* Screenshot Attempts */}
+              <div className="flex items-center justify-between">
+                <span className="text-ink-700 font-medium flex items-center gap-1.5">
+                  <span
+                    className={cn(
+                      "h-2 w-2 rounded-full",
+                      screenshotViolations === 0 ? "bg-ok-600" : screenshotViolations === 1 ? "bg-amber-500 animate-pulse" : "bg-bad-600"
+                    )}
+                  />
+                  Screenshot Attempts
+                </span>
+                <span
+                  className={cn(
+                    "num font-mono px-1.5 py-0.5 rounded text-[11.5px] font-bold border",
+                    screenshotViolations === 0 && "bg-ok-50 text-ok-700 border-ok-200",
+                    screenshotViolations === 1 && "bg-amber-100 text-amber-800 border-amber-300 font-extrabold",
+                    screenshotViolations >= 2 && "bg-bad-100 text-bad-700 border-bad-300 font-extrabold"
+                  )}
+                >
+                  {screenshotViolations}/2
+                </span>
+              </div>
+            </div>
+
+            <div className="text-[10px] text-ink-500 leading-tight pt-1 border-t border-line">
+              {tabSwitchViolations >= 2 || screenshotViolations >= 2 ? (
+                <span className="text-bad-600 font-semibold">Violation limit reached. Examination submitted.</span>
+              ) : tabSwitchViolations === 1 || screenshotViolations === 1 ? (
+                <span className="text-amber-700 font-semibold">Warning: 1 more violation will auto-submit exam.</span>
+              ) : (
+                <span>2 violations in any category will automatically submit exam.</span>
+              )}
+            </div>
+          </div>
+
           <div className="relative aspect-[4/3] overflow-hidden rounded bg-navy-950">
             <video ref={videoRef} muted playsInline className={cn("h-full w-full -scale-x-100 object-cover", !state.exam.requireWebcam && "hidden")} />
             {!state.exam.requireWebcam && <div className="flex h-full items-center justify-center text-[12px] text-white/40">Camera not required</div>}
@@ -673,8 +769,20 @@ export default function ExamRoom() {
         </aside>
       </div>
 
-      {/* Mobile timer */}
-      <div className="fixed right-3 top-16 rounded bg-navy-900 px-2.5 py-1 font-mono text-[13px] text-white lg:hidden">{clock(remaining)}</div>
+      {/* Mobile timer & violation status */}
+      <div className="fixed right-3 top-16 flex items-center gap-1.5 lg:hidden z-20">
+        <div className={cn(
+          "rounded px-2 py-1 font-mono text-[11px] font-bold border shadow-xs",
+          (tabSwitchViolations > 0 || screenshotViolations > 0)
+            ? "bg-amber-50 text-amber-900 border-amber-300"
+            : "bg-white text-ink-700 border-line"
+        )}>
+          T: {tabSwitchViolations}/2 · S: {screenshotViolations}/2
+        </div>
+        <div className="rounded bg-navy-900 px-2.5 py-1 font-mono text-[13px] text-white shadow">
+          {clock(remaining)}
+        </div>
+      </div>
 
       {/* PAUSED OVERLAY */}
       {isPaused && (
@@ -817,6 +925,35 @@ export default function ExamRoom() {
           <Button variant="danger" disabled={!ack} loading={submitting} onClick={() => submit(false)}>Submit examination</Button>
         </div>
       </Dialog>
+
+      {/* VIOLATION AUTO-SUBMIT MODAL */}
+      {violationModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-navy-950/90 p-4 backdrop-blur-xs">
+          <div className="w-full max-w-md rounded-xl border-2 border-bad-600 bg-white p-6 text-center shadow-2xl animate-in fade-in zoom-in-95">
+            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-bad-100 text-bad-600">
+              <ShieldAlert className="h-8 w-8" />
+            </div>
+            <Badge tone="bad" className="mt-3 px-2.5 py-1 font-semibold uppercase tracking-wider text-[11px]">
+              Violation Limit Reached
+            </Badge>
+            <h2 className="mt-3 text-xl font-bold text-navy-950">Examination Auto-Submitted</h2>
+            <p className="mt-2 text-sm text-ink-700 leading-relaxed font-medium">
+              {violationModal}
+            </p>
+            <div className="mt-4 rounded-lg bg-sand-100 p-3 text-left text-xs text-ink-600 border border-line">
+              <div className="font-semibold text-navy-900 mb-1">Strict Anti-Malpractice System:</div>
+              <div>• All answers saved up to the moment of violation.</div>
+              <div>• Detailed timestamps & candidate event logs sent to HR.</div>
+              <div>• Examination is now locked to prevent further modifications.</div>
+            </div>
+            <div className="mt-5">
+              <Button className="w-full bg-navy-900 hover:bg-navy-800 text-white font-medium" onClick={() => finish()}>
+                Proceed to Submission Summary
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

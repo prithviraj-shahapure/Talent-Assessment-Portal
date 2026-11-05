@@ -96,5 +96,6 @@ export interface LiveStatus {
   previewAllowed: boolean;
   multiFaceViolations?: number;
   screenshotViolations?: number;
+  tabSwitchViolations?: number;
 }
 export interface Paged<T> { items: T[]; total: number; page: number; pageSize: number }

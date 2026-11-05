@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { ArrowLeft, Camera, Check, Download, MonitorPlay, X } from "lucide-react";
+import { ArrowLeft, Camera, Check, Download, Layers, MonitorPlay, X } from "lucide-react";
 import { api, download } from "@/lib/api";
 import { useApi } from "@/hooks/useApi";
 import { Alert, Badge, Button, Card, Input, PageHeader, ResultBadge, RiskBadge, Spinner, StageBadge, Tabs, Textarea, useToast } from "@/components/ui";
@@ -43,6 +43,7 @@ interface Review {
   percentage: number | null;
   passed: boolean | null;
   needsManualEval: boolean;
+  submissionMethod?: string | null;
   riskScore: number;
   riskLevel: string;
   timeTakenSec: number | null;
@@ -99,6 +100,11 @@ export default function AttemptReview() {
         <Metric label="Stage" value={<StageBadge stage={r.candidate.stage} />} />
       </div>
       {pending > 0 && <Alert tone="warn" className="mb-4" title={`${pending} answer(s) need manual evaluation`}>Award marks below. The result is finalised once every answer has been graded.</Alert>}
+      {r.submissionMethod === "AUTO_SUBMITTED_VIOLATION" && (
+        <Alert tone="bad" className="mb-4" title="Auto-Submitted: Strict Anti-Malpractice Violation Limit Reached">
+          This examination was auto-submitted because the candidate reached the maximum violation limit (2 tab switches or 2 screenshot attempts). All answers saved prior to the event were preserved for evaluation.
+        </Alert>
+      )}
 
       <div className="grid gap-5 xl:grid-cols-[260px_1fr]">
         <Card title="Section-wise" className="h-fit">
@@ -149,6 +155,58 @@ export default function AttemptReview() {
             </>
           ) : (
             <div className="space-y-4">
+              {/* TAB SWITCHING VIOLATIONS CARD */}
+              {(() => {
+                const tabEvents = proctor?.events.filter((e) => e.type === "TAB_SWITCH") ?? [];
+                if (tabEvents.length > 0) {
+                  return (
+                    <Card className={cn("border-l-4", tabEvents.length >= 2 ? "border-l-bad-600 bg-bad-50/20" : "border-l-amber-500 bg-amber-50/20")}>
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex items-center gap-2.5">
+                          <div className={cn("flex h-9 w-9 items-center justify-center rounded-lg", tabEvents.length >= 2 ? "bg-bad-100 text-bad-700" : "bg-amber-100 text-amber-800")}>
+                            <Layers className="h-5 w-5" />
+                          </div>
+                          <div>
+                            <h3 className="text-[14.5px] font-semibold text-navy-950">
+                              Tab Switching Violations ({tabEvents.length} recorded{tabEvents.length >= 2 ? " — Threshold Reached" : ""})
+                            </h3>
+                            <p className="text-[12px] text-ink-500">
+                              Page visibility loss and tab switching events recorded during the assessment.
+                            </p>
+                          </div>
+                        </div>
+                        <Badge tone={tabEvents.length >= 2 ? "bad" : "warn"} className="font-semibold">
+                          {tabEvents.length}/2 {tabEvents.length >= 2 ? "Limit Exceeded" : "Recorded"}
+                        </Badge>
+                      </div>
+
+                      <div className="mt-3 divide-y divide-line rounded border border-line bg-white">
+                        {tabEvents.map((ev) => (
+                          <div key={ev.id} className="flex items-center justify-between p-3 text-[12.5px]">
+                            <div className="space-y-0.5">
+                              <div className="font-medium text-navy-950 flex items-center gap-2">
+                                <span>{EVENT_LABEL[ev.type] ?? ev.type}</span>
+                                <Badge tone={ev.severity === "HIGH" ? "bad" : "warn"}>{ev.severity}</Badge>
+                              </div>
+                              <div className="text-[12px] text-ink-500">{ev.message || "Candidate switched away from the examination tab"}</div>
+                            </div>
+                            <div className="text-right text-[11.5px] text-ink-500 num">
+                              {fmtDateTime(ev.occurredAt)}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </Card>
+                  );
+                }
+                return (
+                  <div className="rounded-lg border border-line bg-sand-50/60 p-3.5 text-[12.5px] text-ink-600 flex items-center gap-2.5">
+                    <Layers className="h-4 w-4 text-ok-600 shrink-0" />
+                    <span><b>Tab Integrity:</b> Clean session — 0 tab switching or window minimization events detected.</span>
+                  </div>
+                );
+              })()}
+
               {(() => {
                 const screenshotEvents = proctor?.events.filter((e) =>
                   ["SCREENSHOT_ATTEMPT", "SNIPPING_TOOL_DETECTED", "SCREEN_CAPTURE_DETECTED"].includes(e.type)
