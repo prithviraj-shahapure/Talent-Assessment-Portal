@@ -9,7 +9,10 @@ async function ensureCsrf() {
   if (csrfToken) return csrfToken;
   const m = document.cookie.match(/(?:^|; )zv_csrf=([^;]+)/);
   if (m) return (csrfToken = decodeURIComponent(m[1]));
-  const r = await fetch("/api/auth/csrf", { credentials: "include" });
+  const r = await fetch("/api/auth/csrf", {
+    credentials: "include",
+    headers: { "ngrok-skip-browser-warning": "true" },
+  });
   csrfToken = (await r.json()).token as string;
   return csrfToken;
 }
@@ -19,7 +22,9 @@ type Opts = { method?: string; body?: unknown; form?: FormData; signal?: AbortSi
 export async function api<T = unknown>(path: string, opts: Opts = {}): Promise<T> {
   const isFormData = (opts.form instanceof FormData) || (opts.body instanceof FormData);
   const method = opts.method ?? (opts.body || opts.form ? "POST" : "GET");
-  const headers: Record<string, string> = {};
+  const headers: Record<string, string> = {
+    "ngrok-skip-browser-warning": "true",
+  };
   if (method !== "GET") headers["x-csrf-token"] = await ensureCsrf();
   
   // Never manually set Content-Type for FormData; allow browser to generate boundary

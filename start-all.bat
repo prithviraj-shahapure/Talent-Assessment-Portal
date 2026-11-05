@@ -11,14 +11,17 @@ echo.
 echo 2. Waiting for server to initialize (6 seconds)...
 timeout /t 6 /nobreak >nul
 echo.
-echo 3. Starting Cloudflare Public HTTPS Tunnel...
-start "Zanvar Cloudflare Tunnel" cmd /k "tools\cloudflared.exe tunnel --url http://localhost:4000"
+echo 3. Starting Permanent Static Ngrok Tunnel...
+start "Zanvar Permanent Ngrok Tunnel" cmd /k "tools\ngrok.exe http --url=upside-congenial-bullpen.ngrok-free.dev 4000"
 echo.
 echo ============================================================
 echo  Both windows are now running!
-echo  1. Look at the "Zanvar Cloudflare Tunnel" window to copy
-echo     your https://xxxx.trycloudflare.com public link.
-echo  2. Do not close those two windows while candidates are testing.
+echo.
+echo  YOUR PERMANENT HTTPS LINK (NEVER CHANGES):
+echo  https://upside-congenial-bullpen.ngrok-free.dev
+echo.
+echo  Share this exact link with your candidates!
+echo  (Keep both windows open while candidates are testing)
 echo ============================================================
 echo.
 pause
