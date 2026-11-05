@@ -277,8 +277,22 @@ export default function ExamRoom() {
     };
   }, [load, flush]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // ───── Autosave timer (with random jitter to prevent thundering herd across 300+ candidates) ─────
   useEffect(() => {
-    const t = setInterval(flush, 5000);
+    let timer: number;
+    let active = true;
+
+    const scheduleNext = () => {
+      if (!active) return;
+      // 5000ms base + 0 to 2500ms random jitter spreads requests evenly
+      const delay = 5000 + Math.floor(Math.random() * 2500);
+      timer = window.setTimeout(async () => {
+        await flush();
+        scheduleNext();
+      }, delay);
+    };
+
+    scheduleNext();
     const online = () => flush();
     window.addEventListener("online", online);
     const beforeUnload = (e: BeforeUnloadEvent) => {
@@ -288,7 +302,8 @@ export default function ExamRoom() {
     };
     window.addEventListener("beforeunload", beforeUnload);
     return () => {
-      clearInterval(t);
+      active = false;
+      window.clearTimeout(timer);
       window.removeEventListener("online", online);
       window.removeEventListener("beforeunload", beforeUnload);
     };

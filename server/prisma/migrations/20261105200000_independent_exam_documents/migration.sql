@@ -83,3 +83,4 @@ BEGIN
         ALTER TABLE "DocumentSection" ADD CONSTRAINT "DocumentSection_documentId_fkey" FOREIGN KEY ("documentId") REFERENCES "ExamDocument"("id") ON DELETE CASCADE ON UPDATE CASCADE;
     END IF;
 END $$;
+

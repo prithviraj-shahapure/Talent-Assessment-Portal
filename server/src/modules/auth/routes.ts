@@ -3,7 +3,7 @@ import bcrypt from "bcryptjs";
 import { z } from "zod";
 import rateLimit from "express-rate-limit";
 import { prisma } from "../../lib/prisma";
-import { ah, badRequest, conflict, parse, unauthorized } from "../../lib/http";
+import { ah, badRequest, clientIp, conflict, parse, unauthorized } from "../../lib/http";
 import { AUTH_COOKIE, CSRF_COOKIE, randomToken, sha256, signSession } from "../../lib/tokens";
 import { csrfCookieOptions, sessionCookieOptions } from "../../lib/cookies";
 import { requireAuth } from "../../middleware/auth";
@@ -19,7 +19,15 @@ import { firestore } from "../../lib/firestore";
 
 export const authRouter = Router();
 
-const authLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 30, standardHeaders: true, legacyHeaders: false, message: { error: "Too many attempts. Please wait a few minutes and try again." } });
+// Keyed by candidate email so 300+ students logging in from the same campus Wi-Fi / NAT IP don't lock each other out
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 20,
+  keyGenerator: (req) => (req.body?.email ? `auth:${String(req.body.email).trim().toLowerCase()}` : clientIp(req)),
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many login attempts for this account. Please wait a few minutes and try again." },
+});
 
 export const passwordSchema = z
   .string()

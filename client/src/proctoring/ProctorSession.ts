@@ -109,7 +109,7 @@ export class ProctorSession {
       this.every(250, () => this.audioTick());
     }
     this.every(3000, () => this.flush());
-    this.every(2000, () => this.sendStatus());
+    this.every(3500, () => this.sendStatus());
     if (this.cfg.requireFullscreen && !document.fullscreenElement) {
       // The browser refused or could not enter fullscreen — record it so HR sees it.
       this.log("FULLSCREEN_EXIT", "Examination is not running in fullscreen");

@@ -7,7 +7,7 @@ import cookieParser from "cookie-parser";
 import compression from "compression";
 import rateLimit from "express-rate-limit";
 import { env } from "./config/env";
-import { errorHandler } from "./lib/http";
+import { errorHandler, clientIp } from "./lib/http";
 import { loadUser } from "./middleware/auth";
 import { csrfProtection } from "./middleware/csrf";
 import { authRouter } from "./modules/auth/routes";
@@ -67,12 +67,22 @@ export function createApp() {
   app.use(cookieParser());
 
   const api = express.Router();
-  api.use(rateLimit({ windowMs: 15 * 60 * 1000, limit: 3000, standardHeaders: true, legacyHeaders: false }));
   api.use((_req, res, next) => {
     res.setHeader("Cache-Control", "no-store");
     next();
   });
   api.use(loadUser);
+  // High-concurrency rate limiter: keys by user ID when logged in; keys by IP with high ceiling (50,000 / 15m) when unauthenticated
+  // This prevents campus NAT / college Wi-Fi bottlenecks where 300+ students share one public IP
+  api.use(
+    rateLimit({
+      windowMs: 15 * 60 * 1000,
+      limit: (req) => (req.user?.id ? 5000 : 50_000),
+      keyGenerator: (req) => req.user?.id ?? clientIp(req),
+      standardHeaders: true,
+      legacyHeaders: false,
+    })
+  );
   api.use(csrfProtection);
   api.get("/health", (_req, res) => res.json({ ok: true, time: new Date().toISOString() }));
   api.use("/auth", authRouter);

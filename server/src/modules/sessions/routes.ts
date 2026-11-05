@@ -20,13 +20,17 @@ import { firestore } from "../../lib/firestore";
 
 export const sessionsRouter = Router();
 
-// Rate limiter for public verification endpoint: max 10 requests per 15 mins per IP/User to prevent brute force
+// Keyed by candidate identifier or user ID so 300+ candidates entering session codes from the same lab do not block each other
 const verifyLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   limit: 25,
+  keyGenerator: (req) => {
+    const id = (req.body?.identifier as string) || (req.user?.id as string) || (req.body?.candidateId as string);
+    return id ? `verify:${id.trim().toLowerCase()}` : clientIp(req);
+  },
   standardHeaders: true,
   legacyHeaders: false,
-  message: { error: "Too many verification attempts. Please wait a few minutes and try again." },
+  message: { error: "Too many verification attempts for this account. Please wait a few minutes and try again." },
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
