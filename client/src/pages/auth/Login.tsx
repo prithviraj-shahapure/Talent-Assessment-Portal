@@ -78,19 +78,11 @@ export default function Login() {
         </Button>
       </form>
 
-      <div className="mt-6 border-t border-line pt-4 space-y-2 text-[13px] text-ink-500">
-        <div>
-          Have an examination session code?{" "}
-          <Link to="/session" className="font-semibold text-navy-900 hover:underline">
-            Enter Session Code →
-          </Link>
-        </div>
-        <div>
-          New candidate?{" "}
-          <Link to={`/register${loc.search}`} className="font-medium text-navy-900 hover:underline">
-            Create your account
-          </Link>
-        </div>
+      <div className="mt-6 border-t border-line pt-4 text-[13px] text-ink-500">
+        New candidate?{" "}
+        <Link to={`/register${loc.search}`} className="font-medium text-navy-900 hover:underline">
+          Create your account
+        </Link>
       </div>
     </AuthLayout>
   );
