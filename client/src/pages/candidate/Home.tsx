@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowRight, CalendarClock, CheckCircle2, Clock, Compass, FileText, KeyRound, PlayCircle, RotateCcw, Search } from "lucide-react";
+import { ArrowRight, CalendarClock, CheckCircle2, Clock, Compass, FileText, PlayCircle, RotateCcw, Search } from "lucide-react";
 import { api } from "@/lib/api";
 import { useApi } from "@/hooks/useApi";
 import { useAuth } from "@/lib/auth";
@@ -66,10 +66,6 @@ export default function CandidateHome() {
   const { data: myExams, loading: loadingMy, reload: reloadMy } = useApi<MyExam[]>("/me/exams");
   const { data: availableExams, loading: loadingAvail, reload: reloadAvail } = useApi<AvailableExam[]>("/me/available-exams");
 
-  // Sidebar direct session code entry
-  const [quickCode, setQuickCode] = useState("");
-  const [quickBusy, setQuickBusy] = useState(false);
-
   // Apply modal state
   const [selectedExam, setSelectedExam] = useState<AvailableExam | null>(null);
   const [applyCode, setApplyCode] = useState("");
@@ -100,28 +96,6 @@ export default function CandidateHome() {
       setApplyError((err as Error).message || "Verification failed. Please check the session code.");
     } finally {
       setApplyBusy(false);
-    }
-  };
-
-  const handleQuickCodeSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!quickCode.trim()) return;
-
-    setQuickBusy(true);
-    try {
-      const r = await api<{ examId?: string; title: string; alreadyAssigned: boolean }>("/me/redeem", {
-        body: { code: quickCode.trim() },
-      });
-      toast(r.alreadyAssigned ? `You are registered for ${r.title}` : `Successfully registered for ${r.title}`, "ok");
-      setQuickCode("");
-      await Promise.all([reloadMy(), reloadAvail()]);
-      if (r.examId) {
-        nav(`/candidate/exams/${r.examId}`);
-      }
-    } catch (err) {
-      toast((err as Error).message || "Invalid session code", "bad");
-    } finally {
-      setQuickBusy(false);
     }
   };
 
@@ -276,34 +250,6 @@ export default function CandidateHome() {
 
         {/* Sidebar */}
         <div className="space-y-5">
-          <Card className="p-5 shadow-sm border-t-2 border-t-navy-900">
-            <div className="flex items-center gap-2 mb-2 font-semibold text-navy-950 text-sm">
-              <KeyRound className="h-4 w-4 text-navy-800" />
-              <span>Enter Session Code</span>
-            </div>
-            <p className="text-xs text-ink-500 mb-3">
-              Received a test invitation code from Zanvar HR? Apply it here to unlock your exam.
-            </p>
-            <form onSubmit={handleQuickCodeSubmit} className="space-y-3">
-              <Input
-                className="font-mono text-sm uppercase font-medium h-10"
-                placeholder="E.G. ZG-TECH-8472"
-                value={quickCode}
-                onChange={(e) => setQuickCode(e.target.value.toUpperCase())}
-                required
-              />
-              <Button
-                type="submit"
-                size="sm"
-                className="w-full bg-navy-900 hover:bg-navy-800 text-white font-medium"
-                loading={quickBusy}
-                disabled={quickCode.trim().length < 3}
-              >
-                Verify & Register
-              </Button>
-            </form>
-          </Card>
-
           <Card title="Candidate Checklist" className="p-5">
             <ul className="space-y-2.5 text-[12.5px] text-ink-700">
               <li className="flex gap-2">

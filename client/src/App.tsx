@@ -59,7 +59,7 @@ export default function App() {
   return (
     <Suspense fallback={<Spinner className="min-h-[60vh]" />}>
       <Routes>
-        <Route path="/" element={<SessionAccess />} />
+        <Route path="/" element={<Home />} />
         <Route path="/session" element={<SessionAccess />} />
         <Route path="/portal" element={<Home />} />
         <Route path="/login" element={<Login />} />

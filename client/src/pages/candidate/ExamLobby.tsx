@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { ArrowLeft, ArrowRight, Camera, Check, CheckCircle2, Circle, Clock, HandHelping, Loader2, Maximize, Mic, MonitorCheck, RefreshCw, ShieldCheck, User, Wifi, XCircle } from "lucide-react";
+import { ArrowLeft, ArrowRight, Camera, Check, CheckCircle2, Circle, Clock, HandHelping, KeyRound, Loader2, Maximize, Mic, MonitorCheck, RefreshCw, ShieldCheck, User, Wifi, XCircle } from "lucide-react";
 import { api } from "@/lib/api";
 import { useApi } from "@/hooks/useApi";
 import { useAuth } from "@/lib/auth";
@@ -55,6 +55,7 @@ export default function ExamLobby() {
   // ── Session Code Verification Gate State ──
   const [sessionVerified, setSessionVerified] = useState<boolean | null>(null);
   const [sessionChecking, setSessionChecking] = useState(true);
+  const [sessionModalOpen, setSessionModalOpen] = useState(false);
   const [sessionCode, setSessionCode] = useState("");
   const [identifier, setIdentifier] = useState(user?.email || "");
   const [verifyError, setVerifyError] = useState<string | null>(null);
@@ -90,8 +91,36 @@ export default function ExamLobby() {
     };
   }, [examId, nav]);
 
-  const handleVerifySession = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const startExam = async () => {
+    if (!exam) return;
+    try {
+      const bi = browserInfo();
+      const r = await api<{ attemptId: string }>("/attempts/start", {
+        body: {
+          examId: exam.id,
+          consent: { webcam: consent.webcam, microphone: consent.microphone, evidence: consent.evidence, privacyNotice: true },
+          clientInfo: { userAgent: bi.userAgent, browser: `${bi.name} ${bi.version}`, screen: `${screen.width}x${screen.height}`, timezone: Intl.DateTimeFormat().resolvedOptions().timeZone },
+        },
+      });
+      if (mediaStore.verificationPhoto) {
+        const fd = new FormData();
+        fd.append("kind", "VERIFICATION_PHOTO");
+        fd.append("image", mediaStore.verificationPhoto, "verification.jpg");
+        await api(`/attempts/${r.attemptId}/evidence`, { form: fd }).catch(() => undefined);
+      }
+      mediaStore.consent = { webcam: consent.webcam, microphone: consent.microphone, evidence: consent.evidence };
+      mediaStore.justStarted = r.attemptId;
+      startedRef.current = true;
+      nav(`/exam/${r.attemptId}`, { replace: true });
+    } catch (e) {
+      toast((e as Error).message, "bad");
+      if (document.fullscreenElement) document.exitFullscreen().catch(() => undefined);
+      reload();
+    }
+  };
+
+  const handleVerifySession = async (e?: React.FormEvent, thenStart?: boolean) => {
+    if (e) e.preventDefault();
     if (!sessionCode.trim() || !identifier.trim()) {
       setVerifyError("Please enter both your examination session code and registered email or candidate ID.");
       return;
@@ -122,8 +151,12 @@ export default function ExamLobby() {
       }
 
       setSessionVerified(true);
-      toast("Session code verified successfully", "ok");
+      setSessionModalOpen(false);
+      toast("Session code verified successfully! Examination unlocked.", "ok");
       reload();
+      if (thenStart) {
+        await startExam();
+      }
     } catch (err) {
       setVerifyError((err as Error).message || "Verification failed. Please check your credentials.");
     } finally {
@@ -159,72 +192,6 @@ export default function ExamLobby() {
       </Card>
     );
 
-  // ── SESSION CODE VERIFICATION GATE ──
-  if (!sessionVerified) {
-    return (
-      <div className="mx-auto max-w-lg py-8">
-        <Link to="/candidate" className="mb-4 inline-flex items-center gap-1.5 text-[12.5px] text-ink-500 hover:text-ink-900">
-          <ArrowLeft className="h-3.5 w-3.5" /> Back to My Examinations
-        </Link>
-        <Card className="border-t-4 border-t-navy-900 shadow-sm p-6 sm:p-8">
-          <div className="flex items-center gap-3 mb-6">
-            <BrandMark className="h-9 w-9" />
-            <div className="text-left">
-              <div className="text-base font-bold tracking-[0.16em] text-navy-900">ZANVAR GROUP</div>
-              <div className="text-[11px] font-medium tracking-[0.06em] uppercase text-ink-500">Talent Assessment Portal</div>
-            </div>
-          </div>
-
-          <p className="text-sm text-ink-600 mb-6">
-            To access <strong className="text-navy-900">{exam.title}</strong>, enter your examination session code and registered email or candidate ID.
-          </p>
-
-          {verifyError && (
-            <Alert tone="bad" className="mb-5 text-left">
-              {verifyError}
-            </Alert>
-          )}
-
-          <form onSubmit={handleVerifySession} className="space-y-4">
-            <Field label="Examination Session Code">
-              <Input
-                className="font-mono text-base uppercase font-semibold tracking-wider h-11 pl-3"
-                placeholder="E.G. ZG-TECH-8472"
-                value={sessionCode}
-                onChange={(e) => setSessionCode(e.target.value.toUpperCase())}
-                required
-                autoFocus
-              />
-            </Field>
-
-            <Field label="Registered Email or Candidate ID">
-              <Input
-                type="text"
-                className="h-11 mt-1 text-sm"
-                placeholder="your.email@example.com or Candidate ID"
-                value={identifier}
-                onChange={(e) => setIdentifier(e.target.value)}
-                required
-              />
-            </Field>
-
-            <div className="pt-2">
-              <Button
-                type="submit"
-                size="lg"
-                loading={verifying}
-                disabled={!sessionCode.trim() || !identifier.trim()}
-                className="w-full bg-navy-900 hover:bg-navy-800 text-white font-semibold py-2.5 shadow-sm"
-              >
-                Verify & Enter Examination <ArrowRight className="ml-2 h-4 w-4" />
-              </Button>
-            </div>
-          </form>
-        </Card>
-      </div>
-    );
-  }
-
   const blocked =
     exam.phase === "UPCOMING" ? `This examination opens on ${fmtDateTime(exam.startAt)}.` : exam.phase === "CLOSED" ? "This examination window has closed." : exam.attemptsUsed >= exam.attemptsAllowed ? "You have used all permitted attempts for this examination." : !exam.emailVerified ? "Verify your email address before starting. Use the link in the banner above." : null;
 
@@ -242,6 +209,24 @@ export default function ExamLobby() {
           </div>
         </div>
       </div>
+
+      {!sessionVerified && (
+        <div className="mb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50/90 p-3.5 text-sm text-amber-900 shadow-xs">
+          <div className="flex items-center gap-2.5">
+            <KeyRound className="h-4 w-4 shrink-0 text-amber-600" />
+            <span>
+              <strong>Session Code Required:</strong> You can review instructions and complete system setup, but your session code is required to start this assessment.
+            </span>
+          </div>
+          <Button
+            size="sm"
+            className="bg-navy-900 hover:bg-navy-800 text-white shrink-0 font-medium"
+            onClick={() => setSessionModalOpen(true)}
+          >
+            Enter Session Code
+          </Button>
+        </div>
+      )}
       {blocked ? (
         <Alert tone="warn">{blocked}</Alert>
       ) : (
@@ -321,38 +306,91 @@ export default function ExamLobby() {
               <EnvironmentStep
                 back={back}
                 requireFullscreen={p.requireFullscreen}
-                onStart={async () => {
-                  try {
-                    const bi = browserInfo();
-                    const r = await api<{ attemptId: string }>("/attempts/start", {
-                      body: {
-                        examId: exam.id,
-                        consent: { webcam: consent.webcam, microphone: consent.microphone, evidence: consent.evidence, privacyNotice: true },
-                        clientInfo: { userAgent: bi.userAgent, browser: `${bi.name} ${bi.version}`, screen: `${screen.width}x${screen.height}`, timezone: Intl.DateTimeFormat().resolvedOptions().timeZone },
-                      },
-                    });
-                    if (mediaStore.verificationPhoto) {
-                      const fd = new FormData();
-                      fd.append("kind", "VERIFICATION_PHOTO");
-                      fd.append("image", mediaStore.verificationPhoto, "verification.jpg");
-                      await api(`/attempts/${r.attemptId}/evidence`, { form: fd }).catch(() => undefined);
-                    }
-                    mediaStore.consent = { webcam: consent.webcam, microphone: consent.microphone, evidence: consent.evidence };
-                    mediaStore.justStarted = r.attemptId;
-                    startedRef.current = true;
-                    nav(`/exam/${r.attemptId}`, { replace: true });
-                  } catch (e) {
-                    toast((e as Error).message, "bad");
-                    if (document.fullscreenElement) document.exitFullscreen().catch(() => undefined);
-                    reload();
-                  }
-                }}
+                sessionVerified={!!sessionVerified}
+                onRequestSessionCode={() => setSessionModalOpen(true)}
+                onStart={startExam}
               />
             )}
           </div>
         </div>
       )}
       <AccommodationDialog open={accOpen} onClose={() => setAccOpen(false)} examId={exam.id} onDone={reload} />
+
+      {/* Session Code Verification Dialog */}
+      <Dialog
+        open={sessionModalOpen}
+        onClose={() => {
+          setSessionModalOpen(false);
+          setVerifyError(null);
+        }}
+        size="md"
+        title={
+          <div className="flex items-center gap-2.5">
+            <BrandMark className="h-6 w-6" />
+            <div>
+              <div className="text-base font-bold text-navy-900">Enter Examination Session Code</div>
+              <div className="text-[11px] font-medium text-ink-500 uppercase tracking-wider">Zanvar Group Talent Assessment</div>
+            </div>
+          </div>
+        }
+      >
+        <form onSubmit={(e) => handleVerifySession(e, key === "environment")} className="space-y-4 pt-1">
+          <p className="text-xs text-ink-600">
+            To start <strong className="text-navy-900">{exam.title}</strong>, please enter the session code provided by your administrator or HR.
+          </p>
+
+          {verifyError && (
+            <Alert tone="bad" className="text-xs">
+              {verifyError}
+            </Alert>
+          )}
+
+          <Field label="Examination Session Code">
+            <Input
+              className="font-mono text-base uppercase font-semibold tracking-wider h-11 pl-3"
+              placeholder="E.G. ZG-TECH-8472"
+              value={sessionCode}
+              onChange={(e) => setSessionCode(e.target.value.toUpperCase())}
+              required
+              autoFocus
+            />
+          </Field>
+
+          <Field label="Registered Email or Candidate ID">
+            <Input
+              type="text"
+              className="h-10 text-sm"
+              placeholder="your.email@example.com or Candidate ID"
+              value={identifier}
+              onChange={(e) => setIdentifier(e.target.value)}
+              required
+            />
+          </Field>
+
+          <div className="flex justify-end gap-2 pt-3 border-t border-line">
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={() => {
+                setSessionModalOpen(false);
+                setVerifyError(null);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              size="sm"
+              className="bg-navy-900 hover:bg-navy-800 text-white font-medium"
+              loading={verifying}
+              disabled={!sessionCode.trim() || !identifier.trim()}
+            >
+              Verify & Unlock Examination <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
+            </Button>
+          </div>
+        </form>
+      </Dialog>
     </div>
   );
 }
@@ -594,7 +632,19 @@ function PhotoStep({ back, next }: { back: () => void; next: () => void }) {
   );
 }
 
-function EnvironmentStep({ back, onStart, requireFullscreen }: { back: () => void; onStart: () => Promise<void>; requireFullscreen: boolean }) {
+function EnvironmentStep({
+  back,
+  onStart,
+  requireFullscreen,
+  sessionVerified,
+  onRequestSessionCode,
+}: {
+  back: () => void;
+  onStart: () => Promise<void>;
+  requireFullscreen: boolean;
+  sessionVerified: boolean;
+  onRequestSessionCode: () => void;
+}) {
   const [c, setC] = useState({ alone: false, materials: false, rules: false });
   const [busy, setBusy] = useState(false);
   const all = c.alone && c.materials && c.rules;
@@ -605,6 +655,19 @@ function EnvironmentStep({ back, onStart, requireFullscreen }: { back: () => voi
         <Checkbox checked={c.materials} onChange={(e) => setC({ ...c, materials: e.target.checked })} label="I do not have notes, books, phones or other devices within reach." />
         <Checkbox checked={c.rules} onChange={(e) => setC({ ...c, rules: e.target.checked })} label="I understand that switching tabs, leaving fullscreen and copy/paste are recorded, and that the examination submits automatically when time is up." />
       </div>
+
+      {!sessionVerified && (
+        <div className="mt-4 rounded-lg border border-amber-300 bg-amber-50/90 p-3 text-xs text-amber-900 flex items-center justify-between">
+          <span className="flex items-center gap-2">
+            <KeyRound className="h-4 w-4 text-amber-600 shrink-0" />
+            <span>Examination Session Code required before starting this assessment.</span>
+          </span>
+          <Button size="sm" variant="secondary" onClick={onRequestSessionCode}>
+            Enter Code
+          </Button>
+        </div>
+      )}
+
       <Alert tone="navy" className="mt-4" icon={<ShieldCheck className="h-4 w-4" />}>
         When you click <b>Start examination</b>{requireFullscreen ? ", your screen will switch to fullscreen and" : ""} the timer starts immediately. It keeps running even if you lose your connection.
       </Alert>
@@ -616,6 +679,10 @@ function EnvironmentStep({ back, onStart, requireFullscreen }: { back: () => voi
           disabled={!all}
           loading={busy}
           onClick={async () => {
+            if (!sessionVerified) {
+              onRequestSessionCode();
+              return;
+            }
             setBusy(true);
             if (requireFullscreen) await enterFullscreen();
             await onStart();
