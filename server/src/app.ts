@@ -60,7 +60,18 @@ export function createApp() {
       crossOriginOpenerPolicy: { policy: "same-origin-allow-popups" },
     }),
   );
-  app.use(cors({ origin: env.clientOrigin, credentials: true }));
+  app.use(
+    cors({
+      origin: (origin, callback) => {
+        if (!origin) return callback(null, true);
+        if (env.clientOrigin.includes(origin) || origin.endsWith(".trycloudflare.com") || env.serveClient) {
+          return callback(null, true);
+        }
+        return callback(null, false);
+      },
+      credentials: true,
+    }),
+  );
   app.use(compression());
   app.use(express.json({ limit: "1mb" }));
   app.use(express.urlencoded({ extended: false, limit: "1mb" }));

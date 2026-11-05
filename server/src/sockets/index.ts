@@ -28,7 +28,16 @@ const statusSchema = z.object({
 
 export function initSockets(server: HttpServer) {
   const io = new Server(server, {
-    cors: { origin: env.clientOrigin, credentials: true },
+    cors: {
+      origin: (origin, callback) => {
+        if (!origin) return callback(null, true);
+        if (env.clientOrigin.includes(origin) || origin.endsWith(".trycloudflare.com") || env.serveClient) {
+          return callback(null, true);
+        }
+        return callback(null, false);
+      },
+      credentials: true,
+    },
     maxHttpBufferSize: 200_000, // preview frames are small JPEGs
     pingInterval: 10_000,
     pingTimeout: 15_000,
