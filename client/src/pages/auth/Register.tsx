@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
-import { FileUp } from "lucide-react";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import AuthLayout from "@/layouts/AuthLayout";
 import { Alert, Button, Checkbox, Field, Input, Select } from "@/components/ui";
 import { api } from "@/lib/api";
@@ -12,15 +11,24 @@ const DEGREES = ["B.E.", "B.Tech", "Diploma", "M.E.", "M.Tech", "B.Sc", "M.Sc", 
 const YEARS = ["First Year", "Second Year", "Third Year", "Final Year", "Graduated"];
 
 export default function Register() {
-  const [params] = useSearchParams();
   const { refresh } = useAuth();
   const nav = useNavigate();
   const loc = useLocation();
   // Set when the person came from "Continue with Google" (email already verified by Google)
   const [google, setGoogle] = useState<{ email: string; name: string } | null>((loc.state as { google?: { email: string; name: string } } | null)?.google ?? null);
   const [gBusy, setGBusy] = useState(false);
-  const [form, setForm] = useState({ name: google?.name ?? "", email: google?.email ?? "", password: "", confirm: "", mobile: "", college: "", degree: "B.E.", branch: "", currentYear: "Final Year", graduationYear: String(new Date().getFullYear() + 1), invitationCode: params.get("code") ?? "" });
-  const [resume, setResume] = useState<File | null>(null);
+  const [form, setForm] = useState({
+    name: google?.name ?? "",
+    email: google?.email ?? "",
+    password: "",
+    confirm: "",
+    mobile: "",
+    college: "",
+    degree: "B.E.",
+    branch: "",
+    currentYear: "Final Year",
+    graduationYear: String(new Date().getFullYear() + 1),
+  });
   const [consent, setConsent] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -102,19 +110,19 @@ export default function Register() {
           if (!consent) return setError("Please accept the privacy notice to continue");
           setBusy(true);
           try {
-            const fd = new FormData();
-            Object.entries(form).forEach(([k, v]) => k !== "confirm" && !(google && k === "password") && fd.append(k, v));
+            const payload: Record<string, unknown> = { ...form };
+            delete payload.confirm;
             if (google) {
+              delete payload.password;
               const token = await currentGoogleIdToken();
               if (!token) {
                 setGoogle(null);
                 throw new Error("Your Google sign-in has expired. Click Continue with Google again, or choose a password.");
               }
-              fd.append("googleIdToken", token);
+              payload.googleIdToken = token;
             }
-            fd.append("consent", "true");
-            if (resume) fd.append("resume", resume);
-            const r = await api<{ inviteMessage: string | null; devVerifyUrl?: string }>("/auth/register", { form: fd });
+            payload.consent = true;
+            const r = await api<{ inviteMessage: string | null; devVerifyUrl?: string }>("/auth/register", { body: payload });
             await refresh();
             if (google) await googleSignOut();
             setDone(r);
@@ -150,19 +158,6 @@ export default function Register() {
             <Select value={form.currentYear} onChange={set("currentYear")}>{YEARS.map((d) => <option key={d}>{d}</option>)}</Select>
           </Field>
           <Field label="Graduation year" required><Input type="number" min={2000} max={2040} required value={form.graduationYear} onChange={set("graduationYear")} /></Field>
-        </fieldset>
-        <fieldset className="grid gap-4 sm:grid-cols-2">
-          <legend className="label-caps mb-3">Application</legend>
-          <Field label="Resume" hint="PDF or Word, up to 5 MB">
-            <label className="flex h-9 cursor-pointer items-center gap-2 rounded border border-dashed border-line-strong bg-white px-3 text-[13px] text-ink-700 hover:border-navy-500/50">
-              <FileUp className="h-4 w-4 text-ink-400" />
-              <span className="truncate">{resume ? resume.name : "Choose file…"}</span>
-              <input type="file" className="hidden" accept=".pdf,.doc,.docx" onChange={(e) => setResume(e.target.files?.[0] ?? null)} />
-            </label>
-          </Field>
-          <Field label="Examination invitation code" hint="From your invitation email or campus notice">
-            <Input value={form.invitationCode} onChange={(e) => setForm({ ...form, invitationCode: e.target.value.toUpperCase() })} placeholder="e.g. GET-MECH-2026" className="font-mono uppercase" />
-          </Field>
         </fieldset>
         <div className="rounded border border-line bg-white p-3.5">
           <div className="label-caps mb-1.5">Privacy notice</div>

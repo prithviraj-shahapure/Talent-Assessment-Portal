@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { ArrowLeft, ArrowRight, Camera, Check, CheckCircle2, Circle, Clock, HandHelping, KeyRound, Loader2, Maximize, Mic, MonitorCheck, RefreshCw, ShieldCheck, User, Wifi, XCircle } from "lucide-react";
+import { ArrowLeft, ArrowRight, Camera, Check, CheckCircle2, Circle, Clock, HandHelping, Loader2, Maximize, Mic, MonitorCheck, RefreshCw, ShieldCheck, User, Wifi, XCircle } from "lucide-react";
 import { api } from "@/lib/api";
 import { useApi } from "@/hooks/useApi";
 import { useAuth } from "@/lib/auth";
 import { getSocket } from "@/lib/socket";
 import { Alert, Badge, Button, Card, Checkbox, Dialog, Field, Input, Spinner, Textarea, useToast } from "@/components/ui";
+import { BrandMark } from "@/components/Brand";
 import { fmtDateTime } from "@/lib/format";
 import { acquireMedia, AudioMeter, browserInfo, captureFrame, enterFullscreen, mediaStore, stopMedia } from "@/proctoring/media";
 import { FaceAnalyzer } from "@/proctoring/faceDetector";
@@ -165,14 +166,12 @@ export default function ExamLobby() {
         <Link to="/candidate" className="mb-4 inline-flex items-center gap-1.5 text-[12.5px] text-ink-500 hover:text-ink-900">
           <ArrowLeft className="h-3.5 w-3.5" /> Back to My Examinations
         </Link>
-        <Card className="border-t-4 border-t-navy-900 shadow-xl p-6 sm:p-8">
-          <div className="flex items-center gap-3 mb-4">
-            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-navy-900 text-white shadow-md">
-              <KeyRound className="h-6 w-6 text-signal-400" />
-            </div>
-            <div>
-              <div className="text-[11px] font-mono uppercase tracking-wider text-ink-400">Zero-Trust Verification Gate</div>
-              <h1 className="text-xl font-bold text-navy-950">Session Code Verification</h1>
+        <Card className="border-t-4 border-t-navy-900 shadow-sm p-6 sm:p-8">
+          <div className="flex items-center gap-3 mb-6">
+            <BrandMark className="h-9 w-9" />
+            <div className="text-left">
+              <div className="text-base font-bold tracking-[0.16em] text-navy-900">ZANVAR GROUP</div>
+              <div className="text-[11px] font-medium tracking-[0.06em] uppercase text-ink-500">Talent Assessment Portal</div>
             </div>
           </div>
 
@@ -187,17 +186,18 @@ export default function ExamLobby() {
           )}
 
           <form onSubmit={handleVerifySession} className="space-y-4">
-            <Field label="Examination Session Code" hint="Provided in your Zanvar recruitment invitation email (e.g. ZG-TECH-8472)">
+            <Field label="Examination Session Code">
               <Input
                 className="font-mono text-base uppercase font-semibold tracking-wider h-11 pl-3"
                 placeholder="E.G. ZG-TECH-8472"
                 value={sessionCode}
                 onChange={(e) => setSessionCode(e.target.value.toUpperCase())}
                 required
+                autoFocus
               />
             </Field>
 
-            <Field label="Registered Email or Candidate ID" hint="The email or candidate ID linked to your application">
+            <Field label="Registered Email or Candidate ID">
               <Input
                 type="text"
                 className="h-11 mt-1 text-sm"
@@ -214,19 +214,12 @@ export default function ExamLobby() {
                 size="lg"
                 loading={verifying}
                 disabled={!sessionCode.trim() || !identifier.trim()}
-                className="w-full bg-navy-900 hover:bg-navy-800 text-white font-semibold py-3 shadow-md"
+                className="w-full bg-navy-900 hover:bg-navy-800 text-white font-semibold py-2.5 shadow-sm"
               >
                 Verify & Enter Examination <ArrowRight className="ml-2 h-4 w-4" />
               </Button>
             </div>
           </form>
-
-          <div className="mt-6 rounded-lg bg-sand-100 p-3.5 border border-line text-xs text-ink-600 flex items-start gap-2.5">
-            <ShieldCheck className="h-4 w-4 text-ok-600 shrink-0 mt-0.5" />
-            <div>
-              <strong>Secure Access Gate:</strong> Session codes verify schedule validity, candidate authorization, and capacity limits before opening the assessment lobby.
-            </div>
-          </div>
         </Card>
       </div>
     );

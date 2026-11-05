@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { Link, Navigate, useNavigate } from "react-router-dom";
-import { ArrowRight, KeyRound, LogIn, ShieldCheck } from "lucide-react";
+import { ArrowRight, LogIn } from "lucide-react";
 import { Alert, Button, Input } from "@/components/ui";
-import { Brand } from "@/components/Brand";
+import { Brand, BrandMark } from "@/components/Brand";
 import { api } from "@/lib/api";
 import { isStaff, useAuth } from "@/lib/auth";
 
@@ -66,33 +66,25 @@ export default function SessionAccess() {
   return (
     <div className="min-h-screen bg-sand-50 flex flex-col justify-between selection:bg-navy-900 selection:text-white">
       {/* Top Header */}
-      <header className="border-b border-line bg-white/80 backdrop-blur-sm sticky top-0 z-10 px-6 py-3.5 flex items-center justify-between">
+      <header className="border-b border-line bg-white px-6 py-3.5 flex items-center justify-between">
         <Brand />
-        <div className="flex items-center gap-3">
-          <span className="hidden sm:inline-block text-[11px] font-mono uppercase tracking-wider text-ink-500 bg-sand-100 px-2.5 py-1 rounded border border-line">
-            Zero-Trust Assessment Portal
-          </span>
-          <Link to="/login">
-            <Button variant="secondary" size="sm" className="font-semibold text-navy-900 border-navy-900/20 hover:bg-navy-50">
-              <LogIn className="h-3.5 w-3.5 mr-1.5" /> Staff / Admin Login
-            </Button>
-          </Link>
-        </div>
+        <Link to="/login">
+          <Button variant="secondary" size="sm" className="font-medium text-navy-900 border-line hover:bg-sand-50">
+            <LogIn className="h-3.5 w-3.5 mr-1.5" /> Staff Login
+          </Button>
+        </Link>
       </header>
 
       {/* Main Container */}
       <main className="flex-1 flex items-center justify-center p-4 sm:p-6">
-        <div className="w-full max-w-md bg-white rounded-xl shadow-lg border border-line p-6 sm:p-8 space-y-6">
-          <div className="text-center space-y-2">
-            <div className="inline-flex items-center justify-center p-3 bg-navy-900 text-white rounded-xl shadow-md mb-2">
-              <KeyRound className="h-6 w-6" />
+        <div className="w-full max-w-md bg-white rounded-xl shadow-sm border border-line p-6 sm:p-8 space-y-6">
+          {/* Zanvar Group Logo on left with ZANVAR GROUP text to its right */}
+          <div className="flex items-center justify-center gap-3">
+            <BrandMark className="h-9 w-9" />
+            <div className="text-left">
+              <div className="text-base font-bold tracking-[0.16em] text-navy-900">ZANVAR GROUP</div>
+              <div className="text-[11px] font-medium tracking-[0.06em] uppercase text-ink-500">Talent Assessment Portal</div>
             </div>
-            <h1 className="text-xl sm:text-2xl font-bold text-navy-900 tracking-tight">
-              Zanvar Group | Online Assessment
-            </h1>
-            <p className="text-xs sm:text-sm text-ink-500 max-w-xs mx-auto">
-              Welcome to the Zanvar Group Talent Assessment Portal. Enter your examination session code to continue.
-            </p>
           </div>
 
           {error && (
@@ -106,19 +98,14 @@ export default function SessionAccess() {
               <label className="block text-xs font-semibold text-ink-700 uppercase tracking-wider mb-1.5">
                 Examination Session Code
               </label>
-              <div className="relative">
-                <Input
-                  className="font-mono text-center text-lg tracking-widest uppercase font-bold py-2.5 bg-sand-50/50 border-line-strong focus:border-navy-900"
-                  placeholder="e.g. ZG-TECH-8472"
-                  value={sessionCode}
-                  onChange={(e) => setSessionCode(e.target.value.toUpperCase())}
-                  required
-                  autoFocus
-                />
-              </div>
-              <span className="text-[11px] text-ink-400 mt-1 block">
-                Provided in your Zanvar recruitment invitation email.
-              </span>
+              <Input
+                className="font-mono text-center text-lg tracking-widest uppercase font-bold py-2.5 bg-sand-50/50 border-line focus:border-navy-900"
+                placeholder="e.g. ZG-TECH-8472"
+                value={sessionCode}
+                onChange={(e) => setSessionCode(e.target.value.toUpperCase())}
+                required
+                autoFocus
+              />
             </div>
 
             <div>
@@ -127,7 +114,7 @@ export default function SessionAccess() {
               </label>
               <Input
                 type="text"
-                placeholder="name@example.com or ZV-1234"
+                placeholder="name@example.com or Candidate ID"
                 value={identifier}
                 onChange={(e) => setIdentifier(e.target.value)}
                 required
@@ -137,31 +124,17 @@ export default function SessionAccess() {
             <Button
               type="submit"
               size="lg"
-              className="w-full text-sm font-semibold py-3 mt-2"
+              className="w-full text-sm font-semibold py-2.5 mt-2"
               loading={loading}
             >
               Verify & Continue <ArrowRight className="h-4 w-4 ml-1.5" />
             </Button>
           </form>
 
-          {/* Security Guarantee Box */}
-          <div className="p-3 bg-sand-50/80 rounded-lg border border-line text-[11.5px] text-ink-600 space-y-1.5">
-            <div className="flex items-center gap-1.5 font-semibold text-navy-900">
-              <ShieldCheck className="h-4 w-4 text-emerald-700 shrink-0" />
-              <span>Secure Session Verification</span>
-            </div>
-            <p className="leading-snug text-ink-500">
-              Session codes verify candidate assignment, schedule window, capacity, and anti-cheat telemetry safeguards before examination lobby entry.
-            </p>
-          </div>
-
-          {/* Staff Login Link */}
-          <div className="pt-2 border-t border-line text-center space-y-1">
-            <div className="text-xs text-ink-500">
-              Are you an Administrator, Proctor or HR Staff?
-            </div>
-            <Link to="/login" className="inline-flex items-center justify-center gap-1.5 text-xs font-semibold text-navy-900 hover:text-navy-700 hover:underline">
-              <LogIn className="h-3.5 w-3.5" /> Sign in to Admin & Superadmin Portal →
+          {/* Minimal Staff/Admin Login Link */}
+          <div className="pt-3 border-t border-line text-center">
+            <Link to="/login" className="text-xs text-ink-500 hover:text-navy-900 font-medium transition-colors">
+              Staff / Admin Sign In →
             </Link>
           </div>
         </div>
@@ -169,7 +142,7 @@ export default function SessionAccess() {
 
       {/* Footer */}
       <footer className="py-4 border-t border-line text-center text-xs text-ink-400 bg-white">
-        © {new Date().getFullYear()} Zanvar Group Human Resources & Talent Assessment. All rights reserved.
+        © {new Date().getFullYear()} Zanvar Group. All rights reserved.
       </footer>
     </div>
   );

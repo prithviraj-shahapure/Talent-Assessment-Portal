@@ -156,7 +156,6 @@ authRouter.post(
   ah(async (req, res) => {
     const body = parse(registerSchema, req.body);
     const settings = await getSettings();
-    if (!body.invitationCode && !settings.allowSelfRegistrationWithoutInvite) throw badRequest("An examination invitation code is required to register");
     // Registering with Google: the email comes from the verified Google account, and it counts as verified.
     const google = body.googleIdToken ? await verifyGoogleIdToken(body.googleIdToken) : null;
     if (!google && !body.password) throw badRequest("password: Choose a password");

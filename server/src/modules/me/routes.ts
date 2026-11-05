@@ -8,6 +8,8 @@ import { storage } from "../../lib/storage";
 import { audit } from "../../lib/audit";
 import { redeemInvitation } from "../../lib/invites";
 import { resultsVisible, type Paper } from "../../lib/engine";
+import { env } from "../../config/env";
+import { hashSessionCode, normalizeSessionCode, signSessionAccessToken, SESSION_ACCESS_COOKIE } from "../../lib/sessions";
 
 export const meRouter = Router();
 meRouter.use(requireCandidate);
@@ -129,6 +131,221 @@ meRouter.get(
       }),
     );
   }),
+);
+
+/**
+ * GET /api/me/available-exams
+ * Browse all published examinations that are currently open or upcoming for candidates.
+ */
+meRouter.get(
+  "/available-exams",
+  ah(async (req, res) => {
+    const candidateId = cid(req);
+    const now = new Date();
+
+    const exams = await prisma.exam.findMany({
+      where: {
+        status: "PUBLISHED",
+        endAt: { gte: now },
+      },
+      select: {
+        id: true,
+        title: true,
+        description: true,
+        position: true,
+        startAt: true,
+        endAt: true,
+        durationMinutes: true,
+        totalMarks: true,
+        passingMarks: true,
+        maxAttempts: true,
+        department: { select: { name: true } },
+        assignments: {
+          where: { candidateId },
+          select: { id: true },
+        },
+        attempts: {
+          where: { candidateId },
+          select: { id: true, status: true },
+        },
+      },
+      orderBy: { startAt: "asc" },
+    });
+
+    res.json(
+      exams.map((e) => {
+        const isAssigned = e.assignments.length > 0;
+        const attemptsUsed = e.attempts.length;
+        const phase = examPhase({ startAt: e.startAt, endAt: e.endAt, status: "PUBLISHED" });
+        return {
+          id: e.id,
+          title: e.title,
+          description: e.description,
+          position: e.position,
+          department: e.department?.name ?? "General",
+          startAt: e.startAt,
+          endAt: e.endAt,
+          durationMinutes: e.durationMinutes,
+          totalMarks: e.totalMarks,
+          passingMarks: e.passingMarks,
+          maxAttempts: e.maxAttempts,
+          isAssigned,
+          attemptsUsed,
+          phase,
+        };
+      })
+    );
+  })
+);
+
+/**
+ * POST /api/me/apply
+ * Apply for an examination by entering its Examination Session Code.
+ * Verifies code, checks candidate eligibility & session validity, assigns candidate, and issues session access token.
+ */
+meRouter.post(
+  "/apply",
+  ah(async (req, res) => {
+    const candidateId = cid(req);
+    const { examId, sessionCode } = parse(
+      z.object({
+        examId: z.string().min(1),
+        sessionCode: z.string().trim().min(3).max(64),
+      }),
+      req.body
+    );
+
+    // 1. Verify exam exists and is published
+    const exam = await prisma.exam.findUnique({
+      where: { id: examId },
+      include: {
+        sections: { orderBy: { order: "asc" } },
+      },
+    });
+    if (!exam || exam.status !== "PUBLISHED") {
+      throw notFound("Examination not found or is no longer available.");
+    }
+
+    const normCode = normalizeSessionCode(sessionCode);
+    const codeHash = hashSessionCode(normCode);
+    const stripped = normCode.replace(/[^A-Z0-9]/g, "");
+    const strippedHash = hashSessionCode(stripped);
+
+    // 2. Look for matching active session for this exam
+    let session = await prisma.examSession.findFirst({
+      where: {
+        examId,
+        OR: [{ sessionCodeHash: codeHash }, { sessionCodeHash: strippedHash }],
+      },
+      include: {
+        _count: { select: { candidates: true } },
+      },
+    });
+
+    // Also check invitation code for this exam
+    if (!session) {
+      const invitation = await prisma.invitation.findFirst({
+        where: {
+          examId,
+          OR: [
+            { code: { equals: normCode, mode: "insensitive" } },
+            { code: { equals: sessionCode.trim(), mode: "insensitive" } },
+            { code: { equals: stripped, mode: "insensitive" } },
+          ],
+        },
+      });
+
+      if (invitation) {
+        session = await prisma.examSession.findFirst({
+          where: { examId, status: { in: ["ACTIVE", "SCHEDULED"] } },
+          include: {
+            _count: { select: { candidates: true } },
+          },
+        });
+
+        if (!session) {
+          // Provision session for valid invitation
+          session = await prisma.examSession.create({
+            data: {
+              sessionName: `${exam.title} - Main Session`,
+              examId,
+              sessionCodeHash: codeHash,
+              codePrefix: normCode.length > 4 ? normCode.slice(0, 4) : "",
+              codeLastFour: normCode.slice(-4),
+              startsAt: exam.startAt || new Date(Date.now() - 3600000),
+              endsAt: exam.endAt && exam.endAt > new Date() ? exam.endAt : new Date(Date.now() + 30 * 24 * 3600000),
+              maxCandidates: 1000,
+              maxAttempts: exam.maxAttempts || 3,
+              status: "ACTIVE",
+              createdById: exam.createdById,
+            },
+            include: {
+              _count: { select: { candidates: true } },
+            },
+          });
+        }
+      }
+    }
+
+    if (!session) {
+      throw badRequest("Invalid Examination Session Code for this examination. Please check the code and try again.");
+    }
+
+    // 3. Check session status
+    const now = new Date();
+    if (session.status === "REVOKED") throw badRequest("This examination session has been revoked by HR.");
+    if (session.status === "PAUSED") throw badRequest("This examination session is currently paused.");
+    if (session.status === "COMPLETED") throw badRequest("This examination session has ended.");
+    if (session.status === "EXPIRED" || (session.endsAt && now > session.endsAt)) throw badRequest("This examination session has expired.");
+
+    // 4. Assign candidate to exam if not already assigned
+    await prisma.examAssignment.upsert({
+      where: {
+        examId_candidateId: { examId, candidateId },
+      },
+      update: {
+        invitationCode: sessionCode.trim().toUpperCase(),
+      },
+      create: {
+        examId,
+        candidateId,
+        invitationCode: sessionCode.trim().toUpperCase(),
+      },
+    });
+
+    // 5. Connect candidate to session
+    await prisma.sessionCandidate.upsert({
+      where: {
+        sessionId_candidateId: { sessionId: session.id, candidateId },
+      },
+      update: {
+        accessStatus: "JOINED",
+        joinedAt: now,
+      },
+      create: {
+        sessionId: session.id,
+        candidateId,
+        accessStatus: "JOINED",
+        joinedAt: now,
+      },
+    });
+
+    // 6. Sign session access token cookie
+    const token = signSessionAccessToken(candidateId, session.id, examId);
+    res.cookie(SESSION_ACCESS_COOKIE, token, {
+      httpOnly: true,
+      secure: env.cookieSecure,
+      sameSite: "lax",
+      maxAge: (exam.durationMinutes + 120) * 60 * 1000,
+    });
+
+    res.json({
+      success: true,
+      examId,
+      title: exam.title,
+      sessionToken: token,
+    });
+  })
 );
 
 meRouter.get(
