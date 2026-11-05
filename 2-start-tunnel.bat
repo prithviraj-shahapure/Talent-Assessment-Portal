@@ -10,7 +10,7 @@ echo.
 echo Look for the line below starting with:
 echo https://xxxx.trycloudflare.com
 echo.
-echo Share that link with your students/candidates!
+echo Copy that link and share it with your candidates!
 echo (Keep this window open while the exam is taking place)
 echo.
 tools\cloudflared.exe tunnel --url http://localhost:4000
