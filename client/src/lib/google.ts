@@ -23,7 +23,11 @@ async function getFirebaseAuth(): Promise<FirebaseAuth> {
     const [{ initializeApp, getApps }, fa] = await Promise.all([import("firebase/app"), import("firebase/auth")]);
     const app = getApps().find((a) => a.name === "zanvar") ?? initializeApp(google, "zanvar");
     // Nothing is stored in the browser: the Google session only lives until the portal has signed the person in.
-    return fa.initializeAuth(app, { persistence: fa.inMemoryPersistence, popupRedirectResolver: fa.browserPopupRedirectResolver });
+    try {
+      return fa.initializeAuth(app, { persistence: fa.inMemoryPersistence, popupRedirectResolver: fa.browserPopupRedirectResolver });
+    } catch {
+      return fa.getAuth(app);
+    }
   })();
   authPromise.catch(() => (authPromise = null));
   return authPromise;
