@@ -25,14 +25,19 @@ async function clean() {
   await prisma.emailToken.deleteMany({});
   await prisma.auditLog.deleteMany({});
   await prisma.examSession.deleteMany({});
+  await prisma.questionImport.deleteMany({});
 
   // 3. Delete all candidate profiles and candidate users
   console.log("Deleting demo candidate profiles and candidate accounts...");
   await prisma.candidateProfile.deleteMany({});
-  const deletedCandidates = await prisma.user.deleteMany({
-    where: { role: "CANDIDATE" },
+  const deletedNonStaff = await prisma.user.deleteMany({
+    where: {
+      email: {
+        notIn: ["superadmin@zanvargroup.com", "hr@zanvargroup.com", "cyclistprithvi@gmail.com"],
+      },
+    },
   });
-  console.log(`Deleted ${deletedCandidates.count} candidate users.`);
+  console.log(`Deleted ${deletedNonStaff.count} non-staff users.`);
 
   // 4. Delete demo exams created by seed
   console.log("Deleting demo exams and sections...");

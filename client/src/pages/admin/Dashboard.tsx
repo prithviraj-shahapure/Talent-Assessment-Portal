@@ -59,21 +59,25 @@ export default function Dashboard() {
       <div className="grid gap-4 xl:grid-cols-3">
         <Card title="Candidate registrations" subtitle="Last 30 days" className="xl:col-span-2">
           <div className="h-[230px]">
-            <ResponsiveContainer>
-              <AreaChart data={data.registrations} margin={{ left: -20, right: 8, top: 8 }}>
-                <defs>
-                  <linearGradient id="reg" x1="0" x2="0" y1="0" y2="1">
-                    <stop offset="0%" stopColor={CHART.steel} stopOpacity={0.25} />
-                    <stop offset="100%" stopColor={CHART.steel} stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid stroke={CHART.grid} vertical={false} />
-                <XAxis dataKey="date" tick={axis} tickFormatter={(d) => fmtDate(d).slice(0, 6)} interval={4} axisLine={false} tickLine={false} />
-                <YAxis allowDecimals={false} tick={axis} axisLine={false} tickLine={false} />
-                <Tooltip {...tooltipStyle} labelFormatter={(d) => fmtDate(d)} formatter={(v) => [v, "Registrations"]} />
-                <Area type="monotone" dataKey="count" stroke={CHART.steel} strokeWidth={2} fill="url(#reg)" />
-              </AreaChart>
-            </ResponsiveContainer>
+            {data.registrations.every((r) => r.count === 0) ? (
+              <EmptyState title="No candidate registrations in the last 30 days" body="Candidate registrations will appear here once candidates register." />
+            ) : (
+              <ResponsiveContainer>
+                <AreaChart data={data.registrations} margin={{ left: -20, right: 8, top: 8 }}>
+                  <defs>
+                    <linearGradient id="reg" x1="0" x2="0" y1="0" y2="1">
+                      <stop offset="0%" stopColor={CHART.steel} stopOpacity={0.25} />
+                      <stop offset="100%" stopColor={CHART.steel} stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid stroke={CHART.grid} vertical={false} />
+                  <XAxis dataKey="date" tick={axis} tickFormatter={(d) => fmtDate(d).slice(0, 6)} interval={4} axisLine={false} tickLine={false} />
+                  <YAxis allowDecimals={false} tick={axis} axisLine={false} tickLine={false} />
+                  <Tooltip {...tooltipStyle} labelFormatter={(d) => fmtDate(d)} formatter={(v) => [v, "Registrations"]} />
+                  <Area type="monotone" dataKey="count" stroke={CHART.steel} strokeWidth={2} fill="url(#reg)" />
+                </AreaChart>
+              </ResponsiveContainer>
+            )}
           </div>
         </Card>
         <Card title="Pass / fail distribution" subtitle="All evaluated attempts">

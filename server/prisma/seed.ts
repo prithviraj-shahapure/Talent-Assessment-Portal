@@ -125,6 +125,24 @@ async function main() {
     },
   });
 
+  await prisma.user.upsert({
+    where: { email: "cyclistprithvi@gmail.com" },
+    update: {
+      name: "Prithviraj Shahapure",
+      role: "SUPER_ADMIN",
+      isActive: true,
+      emailVerified: true,
+    },
+    create: {
+      email: "cyclistprithvi@gmail.com",
+      name: "Prithviraj Shahapure",
+      role: "SUPER_ADMIN",
+      isActive: true,
+      emailVerified: true,
+      passwordHash: adminHash,
+    },
+  });
+
   // Default Departments
   const deptDefs = [
     ["Production Engineering", "PROD"],

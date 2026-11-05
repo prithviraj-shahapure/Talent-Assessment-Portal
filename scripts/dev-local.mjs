@@ -171,8 +171,14 @@ async function main() {
   try {
     log("Applying database migrations...");
     await run("npm", ["run", "db:deploy"]);
+    const cleanFlag = path.join(root, "server", ".clean-v1");
+    if (!fs.existsSync(cleanFlag)) {
+      log("Purging all legacy dummy / demo data from database...");
+      await run("npm", ["run", "db:clean", "-w", "server"]);
+      fs.writeFileSync(cleanFlag, new Date().toISOString());
+    }
     if (!fs.existsSync(seededFlag)) {
-      log("Loading demo data...");
+      log("Loading clean baseline seed...");
       await run("npm", ["run", "db:seed"]);
       fs.writeFileSync(seededFlag, new Date().toISOString());
     }
@@ -186,7 +192,6 @@ async function main() {
   Portal starting - open http://localhost:5173
   HR login:     hr@zanvargroup.com / Hr@2026
   Super Admin:  superadmin@zanvargroup.com / Admin@2026
-  Candidate:    candidate@example.com / Candidate@2026
   Press Ctrl+C (or close this window) to stop.
 ============================================================
 `);

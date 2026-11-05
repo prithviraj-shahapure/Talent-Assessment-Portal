@@ -8,6 +8,7 @@ client/public/mediapipe/
 *.log
 .DS_Store
 server/.seeded
+server/.clean*
 .pgdata/
 local-start.log
 Claude outputs/
