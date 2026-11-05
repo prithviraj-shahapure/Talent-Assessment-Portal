@@ -1,0 +1,653 @@
+// Zanvar Group Talent Assessment Portal — database schema
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "cjs"
+  runtime      = "nodejs"
+}
+
+// Connection URL lives in prisma.config.ts (Prisma 7)
+datasource db {
+  provider = "postgresql"
+}
+
+// ───────────────────────── Enums ─────────────────────────
+
+enum SessionStatus {
+  SCHEDULED
+  ACTIVE
+  PAUSED
+  EXPIRED
+  COMPLETED
+  REVOKED
+  TERMINATED
+}
+
+enum Role {
+  SUPER_ADMIN
+  HR_ADMIN
+  CANDIDATE
+}
+
+enum ExamStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+enum QuestionType {
+  SINGLE
+  MULTIPLE
+  TRUE_FALSE
+  SHORT
+  DESCRIPTIVE
+  CODING
+  NUMERICAL
+}
+
+enum Difficulty {
+  EASY
+  MEDIUM
+  HARD
+}
+
+enum AttemptStatus {
+  IN_PROGRESS
+  PAUSED
+  SUBMITTED
+  AUTO_SUBMITTED
+  ADMIN_SUBMITTED
+  TERMINATED
+  EVALUATED
+}
+
+enum ResultPublication {
+  MANUAL
+  IMMEDIATE
+  AFTER_EXAM_END
+}
+
+enum PipelineStage {
+  REGISTERED
+  ELIGIBLE
+  EXAM_SCHEDULED
+  EXAM_COMPLETED
+  EVALUATION
+  SHORTLISTED
+  INTERVIEW
+  SELECTED
+  REJECTED
+}
+
+enum Severity {
+  INFO
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum EmailTokenType {
+  VERIFY_EMAIL
+  RESET_PASSWORD
+}
+
+enum AccommodationStatus {
+  PENDING
+  APPROVED
+  DECLINED
+}
+
+enum EvidenceKind {
+  VERIFICATION_PHOTO
+  SNAPSHOT
+}
+
+// ───────────────────────── Identity ─────────────────────────
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  passwordHash  String
+  /// Firebase user id of the linked Google account (null = password sign-in only)
+  googleUid     String?   @unique
+  name          String
+  role          Role
+  isActive      Boolean   @default(true)
+  emailVerified Boolean   @default(false)
+  lastLoginAt   DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  candidate        CandidateProfile?
+  examsCreated     Exam[]              @relation("ExamCreator")
+  questionsCreated Question[]          @relation("QuestionCreator")
+  auditLogs        AuditLog[]
+  emailTokens      EmailToken[]
+  evaluatedAnswers Answer[]            @relation("AnswerEvaluator")
+  pipelineChanges  PipelineHistory[]
+  reviewedEvents   ProctorEvent[]      @relation("EventReviewer")
+  invitations      Invitation[]
+  sessionsCreated  ExamSession[]       @relation("SessionCreator")
+  adminActions     AdminActionAuditLog[] @relation("AdminActionCreator")
+}
+
+model CandidateProfile {
+  id             String        @id @default(cuid())
+  userId         String        @unique
+  user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  mobile         String
+  college        String
+  degree         String
+  branch         String
+  currentYear    String
+  graduationYear Int
+  resumeKey      String?
+  resumeName     String?
+  departmentId   String?
+  department     Department?   @relation(fields: [departmentId], references: [id])
+  stage          PipelineStage @default(REGISTERED)
+  hrNotes        String?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  assignments    ExamAssignment[]
+  attempts       Attempt[]
+  pipeline       PipelineHistory[]
+  consents       ConsentRecord[]
+  accommodations AccommodationRequest[]
+  sessionCandidates SessionCandidate[]
+}
+
+model EmailToken {
+  id        String         @id @default(cuid())
+  userId    String
+  user      User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String         @unique
+  type      EmailTokenType
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime       @default(now())
+}
+
+model Department {
+  id         String             @id @default(cuid())
+  name       String             @unique
+  code       String             @unique
+  createdAt  DateTime           @default(now())
+  exams      Exam[]
+  candidates CandidateProfile[]
+}
+
+// ───────────────────────── Question bank ─────────────────────────
+
+model QuestionCategory {
+  id          String       @id @default(cuid())
+  name        String       @unique
+  description String?
+  createdAt   DateTime     @default(now())
+  questions   Question[]
+  randomRules SectionRandomRule[]
+}
+
+model Question {
+  id              String           @id @default(cuid())
+  type            QuestionType
+  text            String
+  explanation     String?
+  categoryId      String?
+  category        QuestionCategory? @relation(fields: [categoryId], references: [id])
+  difficulty      Difficulty       @default(MEDIUM)
+  marks           Float            @default(1)
+  negativeMarks   Float            @default(0)
+  // SHORT: accepted answers (case-insensitive). NUMERICAL: [value].
+  acceptedAnswers String[]         @default([])
+  numericTolerance Float?
+  codeLanguage    String?
+  codeStarter     String?
+  tags            String[]         @default([])
+  isActive        Boolean          @default(true)
+  sourceType      String           @default("MANUAL") // MANUAL | TXT_IMPORT | AI_GENERATED
+  approvalStatus  String           @default("APPROVED") // APPROVED | PENDING_REVIEW | REJECTED
+  sectionTitle    String?
+  createdById     String?
+  createdBy       User?            @relation("QuestionCreator", fields: [createdById], references: [id])
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  options       QuestionOption[]
+  examQuestions ExamQuestion[]
+  answers       Answer[]
+
+  @@index([categoryId, difficulty, type])
+}
+
+model QuestionOption {
+  id         String   @id @default(cuid())
+  questionId String
+  question   Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  text       String
+  isCorrect  Boolean  @default(false)
+  order      Int      @default(0)
+}
+
+// ───────────────────────── Examinations ─────────────────────────
+
+model Exam {
+  id                  String            @id @default(cuid())
+  title               String
+  description         String?
+  departmentId        String?
+  department          Department?       @relation(fields: [departmentId], references: [id])
+  position            String?
+  category            String?
+  status              ExamStatus        @default(DRAFT)
+  startAt             DateTime
+  endAt               DateTime
+  durationMinutes     Int
+  totalMarks          Float             @default(0)
+  passingMarks        Float             @default(0)
+  negativeMarking     Boolean           @default(false)
+  maxAttempts         Int               @default(1)
+  randomizeQuestions  Boolean           @default(true)
+  randomizeOptions    Boolean           @default(true)
+  sectionTimeLimits   Boolean           @default(false)
+  instructions        String?
+  // { degrees?: string[], branches?: string[], graduationYears?: number[], colleges?: string[] }
+  eligibility         Json?
+  resultPublication   ResultPublication @default(MANUAL)
+  resultsReleased     Boolean           @default(false)
+  // proctoring configuration
+  proctoringEnabled   Boolean           @default(true)
+  requireWebcam       Boolean           @default(true)
+  requireMicrophone   Boolean           @default(true)
+  requireFullscreen   Boolean           @default(true)
+  evidenceCapture     Boolean           @default(false)
+  livePreview         Boolean           @default(true)
+  createdById         String?
+  createdBy           User?             @relation("ExamCreator", fields: [createdById], references: [id])
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+
+  sections    ExamSection[]
+  invitations Invitation[]
+  assignments ExamAssignment[]
+  attempts    Attempt[]
+  accommodations AccommodationRequest[]
+  questionImports QuestionImport[]
+  sessions    ExamSession[]
+}
+
+model ExamSection {
+  id               String              @id @default(cuid())
+  examId           String
+  exam             Exam                @relation(fields: [examId], references: [id], onDelete: Cascade)
+  title            String
+  description      String?
+  order            Int                 @default(0)
+  timeLimitMinutes Int?
+  passingMarks     Float               @default(0)
+  negativeMarks    Float               @default(0)
+  instructions     String?
+  isMandatory      Boolean             @default(true)
+  sectionType      String?             // e.g. "APTITUDE", "TECHNICAL", "PROMPT_ENGINEERING", "CUSTOM"
+  difficultyConfig Json?               // { easy: 30, medium: 50, hard: 20 }
+  questions        ExamQuestion[]
+  randomRules      SectionRandomRule[]
+}
+
+model ExamQuestion {
+  id         String      @id @default(cuid())
+  sectionId  String
+  section    ExamSection @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  questionId String
+  question   Question    @relation(fields: [questionId], references: [id], onDelete: Restrict)
+  order      Int         @default(0)
+  marks      Float?      // override question marks
+
+  @@unique([sectionId, questionId])
+}
+
+// Pick N random questions from the bank at attempt start
+model SectionRandomRule {
+  id         String            @id @default(cuid())
+  sectionId  String
+  section    ExamSection       @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  categoryId String?
+  category   QuestionCategory? @relation(fields: [categoryId], references: [id])
+  difficulty Difficulty?
+  type       QuestionType?
+  count      Int
+  marksEach  Float?
+}
+
+model Invitation {
+  id          String    @id @default(cuid())
+  code        String    @unique
+  examId      String
+  exam        Exam      @relation(fields: [examId], references: [id], onDelete: Cascade)
+  email       String?
+  maxUses     Int       @default(1)
+  usedCount   Int       @default(0)
+  expiresAt   DateTime?
+  createdById String?
+  createdBy   User?     @relation(fields: [createdById], references: [id])
+  createdAt   DateTime  @default(now())
+}
+
+model ExamAssignment {
+  id          String           @id @default(cuid())
+  examId      String
+  exam        Exam             @relation(fields: [examId], references: [id], onDelete: Cascade)
+  candidateId String
+  candidate   CandidateProfile @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  invitationCode String?
+  extraAttempts Int            @default(0)
+  extraMinutes  Int            @default(0)
+  assignedAt  DateTime         @default(now())
+
+  @@unique([examId, candidateId])
+}
+
+// ───────────────────────── Attempts ─────────────────────────
+
+model Attempt {
+  id             String           @id @default(cuid())
+  examId         String
+  exam           Exam             @relation(fields: [examId], references: [id], onDelete: Cascade)
+  candidateId    String
+  candidate      CandidateProfile @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  sessionId      String?
+  session        ExamSession?     @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+  attemptNo      Int
+  status         AttemptStatus    @default(IN_PROGRESS)
+  startedAt      DateTime         @default(now())
+  deadlineAt     DateTime
+  submittedAt    DateTime?
+  // frozen paper: [{ sectionId, title, timeLimitMinutes, questions: [{ questionId, marks, optionOrder: string[] }] }]
+  paper          Json
+  currentSection Int              @default(0)
+  sectionStartedAt DateTime?
+  currentQuestion Int             @default(0)
+  score          Float?
+  maxScore       Float?
+  percentage     Float?
+  passed         Boolean?
+  autoScore      Float?
+  needsManualEval Boolean         @default(false)
+  submissionMethod String?        // CANDIDATE | TIME_UP | ADMIN_FORCE
+  pausedAt       DateTime?
+  remainingSecondsAtPause Int?
+  sectionRemainingSecondsAtPause Int?
+  terminatedAt   DateTime?
+  terminatedReason String?
+  terminatedById String?
+  reentryCount   Int              @default(0)
+  riskScore      Int              @default(0)
+  riskLevel      String           @default("NORMAL")
+  lastSeenAt     DateTime?
+  clientInfo     Json?
+  ipAddress      String?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  answers  Answer[]
+  events   ProctorEvent[]
+  evidence EvidenceFile[]
+  sectionAttempts CandidateSectionAttempt[]
+
+  @@unique([examId, candidateId, attemptNo])
+  @@index([status, deadlineAt])
+}
+
+model Answer {
+  id             String    @id @default(cuid())
+  attemptId      String
+  attempt        Attempt   @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  sectionAttemptId String?
+  sectionAttempt CandidateSectionAttempt? @relation(fields: [sectionAttemptId], references: [id], onDelete: SetNull)
+  questionId     String
+  question       Question  @relation(fields: [questionId], references: [id], onDelete: Restrict)
+  selectedOptionIds String[] @default([])
+  textAnswer     String?
+  markedForReview Boolean  @default(false)
+  isCorrect      Boolean?
+  marksAwarded   Float?
+  autoGraded     Boolean   @default(false)
+  evaluatorId    String?
+  evaluator      User?     @relation("AnswerEvaluator", fields: [evaluatorId], references: [id])
+  evaluatorNote  String?
+  evaluatedAt    DateTime?
+  savedAt        DateTime  @default(now())
+
+  @@unique([attemptId, questionId])
+}
+
+model CandidateSectionAttempt {
+  id               String       @id @default(cuid())
+  attemptId        String
+  attempt          Attempt      @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  sectionIndex     Int
+  sectionId        String?
+  sectionTitle     String
+  status           String       @default("LOCKED") // LOCKED | ACTIVE | COMPLETED | EXPIRED
+  timeLimitMinutes Int?
+  startedAt        DateTime?
+  deadlineAt       DateTime?
+  submittedAt      DateTime?
+  score            Float?
+  maxScore         Float?
+  passed           Boolean?
+  answers          Answer[]
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  @@unique([attemptId, sectionIndex])
+}
+
+model QuestionImport {
+  id               String       @id @default(cuid())
+  examId           String?
+  exam             Exam?        @relation(fields: [examId], references: [id], onDelete: Cascade)
+  fileName         String
+  source           String       @default("TXT") // TXT | AI_GENERATION
+  totalQuestions   Int          @default(0)
+  validQuestions   Int          @default(0)
+  invalidQuestions Int          @default(0)
+  status           String       @default("PENDING") // PENDING | PROCESSED | REJECTED
+  parsedData       Json
+  createdById      String?
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+}
+
+// ───────────────────────── Session Management ─────────────────────────
+
+model ExamSession {
+  id              String           @id @default(cuid())
+  sessionName     String
+  examId          String
+  exam            Exam             @relation(fields: [examId], references: [id], onDelete: Cascade)
+  sessionCodeHash String           @unique
+  codeLastFour    String
+  codePrefix      String?
+  startsAt        DateTime
+  endsAt          DateTime
+  maxCandidates   Int              @default(100)
+  maxAttempts     Int              @default(1)
+  status          SessionStatus    @default(SCHEDULED)
+  eligibility     Json?
+  pausedAt        DateTime?
+  terminatedAt    DateTime?
+  terminatedReason String?
+  terminatedById  String?
+  recoveredAt     DateTime?
+  recoveredById   String?
+  recoveryReason  String?
+  createdById     String?
+  createdBy       User?            @relation("SessionCreator", fields: [createdById], references: [id])
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  candidates      SessionCandidate[]
+  attempts        Attempt[]
+  auditLogs       SessionAuditLog[]
+  adminActionLogs AdminActionAuditLog[]
+
+  @@index([status, startsAt, endsAt])
+}
+
+model SessionCandidate {
+  id              String           @id @default(cuid())
+  sessionId       String
+  session         ExamSession      @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  candidateId     String
+  candidate       CandidateProfile @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  invitedAt       DateTime         @default(now())
+  accessStatus    String           @default("INVITED") // INVITED | JOINED | APPEARING | COMPLETED | REVOKED
+  joinedAt        DateTime?
+  attemptsUsed    Int              @default(0)
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  @@unique([sessionId, candidateId])
+  @@index([sessionId, accessStatus])
+}
+
+model SessionAuditLog {
+  id              String           @id @default(cuid())
+  sessionId       String
+  session         ExamSession      @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  candidateId     String?
+  eventType       String           // CODE_VERIFIED | ACCESS_GRANTED | ACCESS_DENIED | SESSION_PAUSED | SESSION_REVOKED | CODE_REGENERATED
+  eventTimestamp  DateTime         @default(now())
+  metadata        Json?
+  ipAddress       String?
+
+  @@index([sessionId, eventTimestamp])
+}
+
+model AdminActionAuditLog {
+  id              String           @id @default(cuid())
+  adminId         String
+  admin           User             @relation("AdminActionCreator", fields: [adminId], references: [id])
+  candidateId     String?
+  sessionId       String?
+  session         ExamSession?     @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+  examId          String?
+  actionType      String           // SESSION_PAUSE | SESSION_RESUME | SESSION_TERMINATE | SESSION_RECOVER | CANDIDATE_PAUSE | CANDIDATE_RESUME | CANDIDATE_FORCE_SUBMIT | CANDIDATE_TERMINATE | CANDIDATE_REENTRY | BULK_ACTION
+  actionReason    String?
+  previousStatus  String?
+  newStatus       String?
+  metadata        Json?
+  ipAddress       String?
+  createdAt       DateTime         @default(now())
+
+  @@index([sessionId, createdAt])
+  @@index([adminId, createdAt])
+  @@index([actionType, createdAt])
+}
+
+// ───────────────────────── Proctoring ─────────────────────────
+
+model ProctorEvent {
+  id          String        @id @default(cuid())
+  attemptId   String
+  attempt     Attempt       @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  examId      String
+  candidateId String
+  type        String
+  severity    Severity      @default(LOW)
+  message     String?
+  weightApplied Int         @default(0)
+  meta        Json?
+  evidenceId  String?
+  evidence    EvidenceFile? @relation(fields: [evidenceId], references: [id], onDelete: SetNull)
+  occurredAt  DateTime
+  createdAt   DateTime      @default(now())
+  reviewed    Boolean       @default(false)
+  reviewNote  String?
+  reviewedById String?
+  reviewedBy  User?         @relation("EventReviewer", fields: [reviewedById], references: [id])
+
+  @@index([attemptId, occurredAt])
+  @@index([examId, type])
+}
+
+model EvidenceFile {
+  id         String         @id @default(cuid())
+  attemptId  String
+  attempt    Attempt        @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  kind       EvidenceKind
+  storageKey String
+  mimeType   String
+  sizeBytes  Int
+  expiresAt  DateTime?
+  createdAt  DateTime       @default(now())
+  events     ProctorEvent[]
+}
+
+model ConsentRecord {
+  id            String           @id @default(cuid())
+  candidateId   String
+  candidate     CandidateProfile @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  examId        String?
+  policyVersion String
+  webcam        Boolean
+  microphone    Boolean
+  evidence      Boolean
+  ipAddress     String?
+  userAgent     String?
+  acceptedAt    DateTime         @default(now())
+}
+
+model AccommodationRequest {
+  id          String              @id @default(cuid())
+  candidateId String
+  candidate   CandidateProfile    @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  examId      String
+  exam        Exam                @relation(fields: [examId], references: [id], onDelete: Cascade)
+  reason      String
+  status      AccommodationStatus @default(PENDING)
+  response    String?
+  extraMinutes Int               @default(0)
+  // approved accommodations can waive webcam / microphone requirements for this candidate
+  waiveWebcam Boolean            @default(false)
+  waiveMicrophone Boolean        @default(false)
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+}
+
+// ───────────────────────── Recruitment / admin ─────────────────────────
+
+model PipelineHistory {
+  id          String           @id @default(cuid())
+  candidateId String
+  candidate   CandidateProfile @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  fromStage   PipelineStage?
+  toStage     PipelineStage
+  note        String?
+  changedById String?
+  changedBy   User?            @relation(fields: [changedById], references: [id])
+  createdAt   DateTime         @default(now())
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  userId     String?
+  user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  action     String
+  entity     String?
+  entityId   String?
+  details    Json?
+  ipAddress  String?
+  createdAt  DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([entity, entityId])
+}
+
+model SystemSetting {
+  key       String   @id
+  value     Json
+  updatedAt DateTime @updatedAt
+}

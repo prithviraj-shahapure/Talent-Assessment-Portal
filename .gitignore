@@ -1,0 +1,15 @@
+node_modules/
+dist/
+server/src/generated/
+server/storage/
+.env
+server/.env
+client/public/mediapipe/
+*.log
+.DS_Store
+server/.seeded
+.pgdata/
+local-start.log
+Claude outputs/
+scratch/
+client/dist/

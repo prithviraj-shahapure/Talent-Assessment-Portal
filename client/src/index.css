@@ -1,0 +1,32 @@
+@import "@fontsource/ibm-plex-sans/400.css";
+@import "@fontsource/ibm-plex-sans/500.css";
+@import "@fontsource/ibm-plex-sans/600.css";
+@import "@fontsource/ibm-plex-sans/700.css";
+@import "@fontsource/ibm-plex-mono/400.css";
+@import "@fontsource/ibm-plex-mono/500.css";
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html { -webkit-font-smoothing: antialiased; }
+  body { @apply bg-canvas text-ink-900 font-sans text-[14px] leading-[1.45]; }
+  h1, h2, h3 { @apply tracking-tight; }
+  :focus-visible { @apply outline-none ring-2 ring-steel-500 ring-offset-1; }
+  ::selection { @apply bg-steel-100; }
+}
+
+@layer components {
+  .label-caps { @apply text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-500; }
+  .num { @apply font-mono tabular-nums; }
+  .card { @apply bg-white border border-line rounded-md shadow-card; }
+  .table-base { @apply w-full text-left text-[13px]; }
+  .table-base thead th { @apply label-caps px-3 py-2.5 bg-navy-50/60 border-b border-line whitespace-nowrap; }
+  .table-base tbody td { @apply px-3 py-2.5 border-b border-line align-middle; }
+  .table-base tbody tr:last-child td { @apply border-b-0; }
+  .table-base tbody tr.row-hover:hover { @apply bg-navy-50/50 cursor-pointer; }
+  .scrollbar-thin::-webkit-scrollbar { width: 8px; height: 8px; }
+  .scrollbar-thin::-webkit-scrollbar-thumb { background: #cbd2dd; border-radius: 4px; }
+  .prose-q { @apply whitespace-pre-wrap break-words leading-relaxed; }
+}
