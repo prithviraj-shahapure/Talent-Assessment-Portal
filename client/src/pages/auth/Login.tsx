@@ -78,45 +78,6 @@ export default function Login() {
         </Button>
       </form>
 
-      {/* Quick Role Fill Presets for Local Testing */}
-      <div className="mt-4 p-3 bg-sand-50 rounded-lg border border-line text-xs">
-        <div className="text-[11px] font-semibold text-ink-500 uppercase tracking-wider mb-2">
-          Quick Demo Credentials:
-        </div>
-        <div className="flex flex-wrap gap-1.5">
-          <button
-            type="button"
-            className="px-2 py-1 rounded bg-navy-900 text-white font-medium text-[11px] hover:bg-navy-800 transition-colors"
-            onClick={() => {
-              setEmail("superadmin@zanvargroup.com");
-              setPassword("Admin@2026");
-            }}
-          >
-            Super Admin
-          </button>
-          <button
-            type="button"
-            className="px-2 py-1 rounded bg-navy-800 text-white font-medium text-[11px] hover:bg-navy-700 transition-colors"
-            onClick={() => {
-              setEmail("hr@zanvargroup.com");
-              setPassword("Hr@2026");
-            }}
-          >
-            HR Admin
-          </button>
-          <button
-            type="button"
-            className="px-2 py-1 rounded bg-sand-200 text-ink-800 font-medium text-[11px] hover:bg-sand-300 transition-colors"
-            onClick={() => {
-              setEmail("candidate@example.com");
-              setPassword("Candidate@2026");
-            }}
-          >
-            Candidate
-          </button>
-        </div>
-      </div>
-
       <div className="mt-6 border-t border-line pt-4 space-y-2 text-[13px] text-ink-500">
         <div>
           Have an examination session code?{" "}

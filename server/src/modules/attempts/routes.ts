@@ -571,6 +571,23 @@ attemptsRouter.post(
             await audit(req, "attempt.auto_submit_multiple_faces", "Attempt", a.id, { violationCount: multiCount });
           }
         }
+      } else if (["SCREENSHOT_ATTEMPT", "SNIPPING_TOOL_DETECTED", "SCREEN_CAPTURE_DETECTED"].includes(ev.type)) {
+        const screenshotCount = await prisma.proctorEvent.count({
+          where: { attemptId: a.id, type: { in: ["SCREENSHOT_ATTEMPT", "SNIPPING_TOOL_DETECTED", "SCREEN_CAPTURE_DETECTED"] } },
+        });
+        liveHub.update(a.id, { screenshotViolations: screenshotCount });
+        liveHub.event(a.examId, a.id, {
+          id: r.event.id,
+          type: r.event.type,
+          severity: r.event.severity,
+          message: r.event.message,
+          occurredAt: r.event.occurredAt,
+          weightApplied: r.event.weightApplied,
+          riskScore: r.riskScore,
+          riskLevel: r.riskLevel,
+          hasEvidence: !!r.event.evidenceId,
+          screenshotViolations: screenshotCount,
+        });
       } else {
         liveHub.event(a.examId, a.id, {
           id: r.event.id,

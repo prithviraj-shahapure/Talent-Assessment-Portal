@@ -1,11 +1,11 @@
 import { useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { ArrowLeft, Check, Download, MonitorPlay, X } from "lucide-react";
+import { ArrowLeft, Camera, Check, Download, MonitorPlay, X } from "lucide-react";
 import { api, download } from "@/lib/api";
 import { useApi } from "@/hooks/useApi";
 import { Alert, Badge, Button, Card, Input, PageHeader, ResultBadge, RiskBadge, Spinner, StageBadge, Tabs, Textarea, useToast } from "@/components/ui";
 import { EventTimeline, type ProctorEventRow } from "@/components/proctor/EventTimeline";
-import { fmtDateTime, fmtDuration, fmtPct, QUESTION_TYPE_LABEL } from "@/lib/format";
+import { EVENT_LABEL, fmtDateTime, fmtDuration, fmtPct, QUESTION_TYPE_LABEL } from "@/lib/format";
 import type { PipelineStage, QuestionType } from "@/lib/types";
 import { cn } from "@/lib/cn";
 
@@ -148,7 +148,59 @@ export default function AttemptReview() {
               </div>
             </>
           ) : (
-            <Card padded={false}>{proctor ? <EventTimeline events={proctor.events} startedAt={proctor.startedAt} onChange={reloadP} /> : <Spinner />}</Card>
+            <div className="space-y-4">
+              {(() => {
+                const screenshotEvents = proctor?.events.filter((e) =>
+                  ["SCREENSHOT_ATTEMPT", "SNIPPING_TOOL_DETECTED", "SCREEN_CAPTURE_DETECTED"].includes(e.type)
+                ) ?? [];
+                if (screenshotEvents.length > 0) {
+                  return (
+                    <Card className="border-l-4 border-l-bad-600 bg-bad-50/20">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex items-center gap-2.5">
+                          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-bad-100 text-bad-700">
+                            <Camera className="h-5 w-5" />
+                          </div>
+                          <div>
+                            <h3 className="text-[14.5px] font-semibold text-bad-950">
+                              Screenshot & Screen Capture Violations ({screenshotEvents.length} flagged)
+                            </h3>
+                            <p className="text-[12px] text-ink-500">
+                              Reviewable security indicators recorded during examination execution.
+                            </p>
+                          </div>
+                        </div>
+                        <Badge tone="bad" className="font-semibold">{screenshotEvents.length} Event{screenshotEvents.length > 1 ? "s" : ""}</Badge>
+                      </div>
+
+                      <div className="mt-3 divide-y divide-line rounded border border-line bg-white">
+                        {screenshotEvents.map((ev) => (
+                          <div key={ev.id} className="flex items-center justify-between p-3 text-[12.5px]">
+                            <div className="space-y-0.5">
+                              <div className="font-medium text-navy-950 flex items-center gap-2">
+                                <span>{EVENT_LABEL[ev.type] ?? ev.type}</span>
+                                <Badge tone={ev.severity === "HIGH" ? "bad" : "warn"}>{ev.severity}</Badge>
+                              </div>
+                              <div className="text-[12px] text-ink-500">{ev.message || "Screenshot attempt recorded by proctoring engine"}</div>
+                            </div>
+                            <div className="text-right text-[11.5px] text-ink-500 num">
+                              {fmtDateTime(ev.occurredAt)}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </Card>
+                  );
+                }
+                return (
+                  <div className="rounded-lg border border-line bg-sand-50/60 p-3.5 text-[12.5px] text-ink-600 flex items-center gap-2.5">
+                    <Camera className="h-4 w-4 text-ok-600 shrink-0" />
+                    <span><b>Screenshot Security:</b> Clean session — 0 screenshot or screen capture shortcuts were detected.</span>
+                  </div>
+                );
+              })()}
+              <Card padded={false}>{proctor ? <EventTimeline events={proctor.events} startedAt={proctor.startedAt} onChange={reloadP} /> : <Spinner />}</Card>
+            </div>
           )}
         </div>
       </div>

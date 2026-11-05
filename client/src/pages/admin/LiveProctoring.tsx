@@ -48,7 +48,7 @@ export default function LiveProctoring() {
     s.on("disconnect", () => setConnected(false));
     const onStatus = (st: LiveStatus) => setRows((m) => new Map(m).set(st.attemptId, { ...m.get(st.attemptId), ...st }));
     const onFrame = (f: { attemptId: string; image: string }) => setFrames((x) => ({ ...x, [f.attemptId]: f.image }));
-    const onEvent = (e: { attemptId: string; type: string; message: string; severity: string; occurredAt: string; riskScore: number; riskLevel: string; weightApplied: number; multiFaceViolations?: number }) => {
+    const onEvent = (e: { attemptId: string; type: string; message: string; severity: string; occurredAt: string; riskScore: number; riskLevel: string; weightApplied: number; multiFaceViolations?: number; screenshotViolations?: number }) => {
       setRows((m) => {
         const cur = m.get(e.attemptId);
         if (!cur) return m;
@@ -59,6 +59,7 @@ export default function LiveProctoring() {
           riskLevel: e.riskLevel as LiveStatus["riskLevel"],
           eventCount: cur.eventCount + 1,
           multiFaceViolations: e.multiFaceViolations !== undefined ? e.multiFaceViolations : cur.multiFaceViolations,
+          screenshotViolations: e.screenshotViolations !== undefined ? e.screenshotViolations : cur.screenshotViolations,
         });
         return n;
       });
@@ -190,6 +191,11 @@ export default function LiveProctoring() {
                               <Users className="h-3 w-3" /> Multi: {r.multiFaceViolations}/2
                             </span>
                           ) : null}
+                          {r.screenshotViolations && r.screenshotViolations > 0 ? (
+                            <span className="inline-flex items-center gap-1 font-semibold text-bad-600 bg-bad-50 px-1.5 py-0.5 rounded text-[11px]" title="Screenshot / Screen capture violations">
+                              <Camera className="h-3 w-3" /> Snip: {r.screenshotViolations}
+                            </span>
+                          ) : null}
                           <span className={cn("inline-flex items-center gap-1 num", r.eventCount > 0 && "text-warn-600")}>
                             <AlertTriangle className="h-3 w-3" /> {r.eventCount}
                           </span>
@@ -207,17 +213,23 @@ export default function LiveProctoring() {
             <EmptyState icon={<Users className="h-6 w-6" />} title="No new events" body="New flags will appear here." />
           ) : (
             <ul className="max-h-[70vh] divide-y divide-line overflow-y-auto scrollbar-thin">
-              {feed.map((e, i) => (
-                <li key={i} className="cursor-pointer px-3 py-2 hover:bg-navy-50/50" onClick={() => nav(`/admin/live/${e.attemptId}`)}>
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="truncate text-[12.5px] font-medium">{nameOf(e.attemptId)}</span>
-                    <Badge tone={e.severity === "HIGH" ? "bad" : e.severity === "MEDIUM" ? "warn" : "steel"}>{e.severity}</Badge>
-                  </div>
-                  <div className="text-[12px] text-ink-500">
-                    {e.message ? e.message : (EVENT_LABEL[e.type] ?? e.type)} · {relTime(e.at)}
-                  </div>
-                </li>
-              ))}
+              {feed.map((e, i) => {
+                const isScreenshot = ["SCREENSHOT_ATTEMPT", "SNIPPING_TOOL_DETECTED", "SCREEN_CAPTURE_DETECTED"].includes(e.type);
+                return (
+                  <li key={i} className={cn("cursor-pointer px-3 py-2 hover:bg-navy-50/50 transition-colors", isScreenshot && "bg-bad-50/50 border-l-2 border-l-bad-600")} onClick={() => nav(`/admin/live/${e.attemptId}`)}>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="truncate text-[12.5px] font-medium flex items-center gap-1.5">
+                        {isScreenshot && <Camera className="h-3 w-3 text-bad-600 shrink-0" />}
+                        <span>{nameOf(e.attemptId)}</span>
+                      </span>
+                      <Badge tone={e.severity === "HIGH" ? "bad" : e.severity === "MEDIUM" ? "warn" : "steel"}>{e.severity}</Badge>
+                    </div>
+                    <div className="text-[12px] text-ink-500">
+                      {e.message ? e.message : (EVENT_LABEL[e.type] ?? e.type)} · {relTime(e.at)}
+                    </div>
+                  </li>
+                );
+              })}
             </ul>
           )}
         </Card>

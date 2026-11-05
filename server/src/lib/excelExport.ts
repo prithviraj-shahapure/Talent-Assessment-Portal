@@ -357,6 +357,7 @@ export async function generateExaminationExcel(options: ExportFilterOptions): Pr
     { header: "Candidate Name", key: "name", width: 22 },
     { header: "Candidate ID", key: "candidateId", width: 16 },
     { header: "Total Proctoring Events", key: "totalEvents", width: 20 },
+    { header: "Screenshot Violations", key: "screenshotViolations", width: 20 },
     { header: "Face Absence Events", key: "faceAbsence", width: 18 },
     { header: "Multiple Face Events", key: "multiFace", width: 18 },
     { header: "Tab Switching Events", key: "tabSwitch", width: 18 },
@@ -372,6 +373,9 @@ export async function generateExaminationExcel(options: ExportFilterOptions): Pr
 
   filteredAttempts.forEach((a) => {
     const events = a.events || [];
+    const screenshotViolations = events.filter((e) =>
+      e.type.includes("SCREENSHOT") || e.type.includes("SNIPPING") || e.type.includes("SCREEN_CAPTURE")
+    ).length;
     const faceAbsence = events.filter((e) => e.type.includes("FACE_NOT_FOUND") || e.type.includes("LOOKING_AWAY")).length;
     const multiFace = events.filter((e) => e.type.includes("MULTIPLE_FACES")).length;
     const tabSwitch = events.filter((e) => e.type.includes("TAB_SWITCH") || e.type.includes("FOCUS_LOST")).length;
@@ -383,6 +387,7 @@ export async function generateExaminationExcel(options: ExportFilterOptions): Pr
       name: a.candidate?.user?.name ?? "—",
       candidateId: a.candidate?.id ? a.candidate.id.slice(-8).toUpperCase() : (a.candidateId || "—"),
       totalEvents: events.length,
+      screenshotViolations,
       faceAbsence,
       multiFace,
       tabSwitch,

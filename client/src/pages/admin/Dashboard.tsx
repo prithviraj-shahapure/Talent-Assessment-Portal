@@ -100,33 +100,41 @@ export default function Dashboard() {
       <div className="grid gap-4 xl:grid-cols-2">
         <Card title="Examination participation" subtitle="Assigned vs attempted vs submitted">
           <div className="h-[260px]">
-            <ResponsiveContainer>
-              <BarChart data={data.participation} margin={{ left: -20, right: 8, top: 8 }} barGap={2}>
-                <CartesianGrid stroke={CHART.grid} vertical={false} />
-                <XAxis dataKey="title" tick={axis} tickFormatter={shortTitle} axisLine={false} tickLine={false} interval={0} />
-                <YAxis allowDecimals={false} tick={axis} axisLine={false} tickLine={false} />
-                <Tooltip {...tooltipStyle} />
-                <Legend iconType="square" iconSize={9} wrapperStyle={{ fontSize: 12 }} />
-                <Bar dataKey="assigned" name="Assigned" fill={CHART.muted} radius={[2, 2, 0, 0]} />
-                <Bar dataKey="attempted" name="Attempted" fill={CHART.steel} radius={[2, 2, 0, 0]} />
-                <Bar dataKey="submitted" name="Submitted" fill={CHART.navy} radius={[2, 2, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
+            {data.participation.length === 0 ? (
+              <EmptyState title="No examination participation data yet" body="Participation charts will populate once candidates are assigned to examinations." />
+            ) : (
+              <ResponsiveContainer>
+                <BarChart data={data.participation} margin={{ left: -20, right: 8, top: 8 }} barGap={2}>
+                  <CartesianGrid stroke={CHART.grid} vertical={false} />
+                  <XAxis dataKey="title" tick={axis} tickFormatter={shortTitle} axisLine={false} tickLine={false} interval={0} />
+                  <YAxis allowDecimals={false} tick={axis} axisLine={false} tickLine={false} />
+                  <Tooltip {...tooltipStyle} />
+                  <Legend iconType="square" iconSize={9} wrapperStyle={{ fontSize: 12 }} />
+                  <Bar dataKey="assigned" name="Assigned" fill={CHART.muted} radius={[2, 2, 0, 0]} />
+                  <Bar dataKey="attempted" name="Attempted" fill={CHART.steel} radius={[2, 2, 0, 0]} />
+                  <Bar dataKey="submitted" name="Submitted" fill={CHART.navy} radius={[2, 2, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            )}
           </div>
         </Card>
         <Card title="Examination performance comparison" subtitle="Average and highest score (%)">
           <div className="h-[260px]">
-            <ResponsiveContainer>
-              <BarChart data={data.participation.filter((p) => p.submitted > 0)} margin={{ left: -20, right: 8, top: 8 }} layout="horizontal">
-                <CartesianGrid stroke={CHART.grid} vertical={false} />
-                <XAxis dataKey="title" tick={axis} tickFormatter={shortTitle} axisLine={false} tickLine={false} interval={0} />
-                <YAxis domain={[0, 100]} tick={axis} axisLine={false} tickLine={false} />
-                <Tooltip {...tooltipStyle} formatter={(v: number) => `${v}%`} />
-                <Legend iconType="square" iconSize={9} wrapperStyle={{ fontSize: 12 }} />
-                <Bar dataKey="avgPercentage" name="Average %" fill={CHART.steel} radius={[2, 2, 0, 0]} />
-                <Bar dataKey="maxPercentage" name="Highest %" fill={CHART.signal} radius={[2, 2, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
+            {data.participation.filter((p) => p.submitted > 0).length === 0 ? (
+              <EmptyState title="No submitted examinations yet" body="Performance metrics will appear after candidate submissions." />
+            ) : (
+              <ResponsiveContainer>
+                <BarChart data={data.participation.filter((p) => p.submitted > 0)} margin={{ left: -20, right: 8, top: 8 }} layout="horizontal">
+                  <CartesianGrid stroke={CHART.grid} vertical={false} />
+                  <XAxis dataKey="title" tick={axis} tickFormatter={shortTitle} axisLine={false} tickLine={false} interval={0} />
+                  <YAxis domain={[0, 100]} tick={axis} axisLine={false} tickLine={false} />
+                  <Tooltip {...tooltipStyle} formatter={(v: number) => `${v}%`} />
+                  <Legend iconType="square" iconSize={9} wrapperStyle={{ fontSize: 12 }} />
+                  <Bar dataKey="avgPercentage" name="Average %" fill={CHART.steel} radius={[2, 2, 0, 0]} />
+                  <Bar dataKey="maxPercentage" name="Highest %" fill={CHART.signal} radius={[2, 2, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            )}
           </div>
         </Card>
       </div>

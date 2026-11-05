@@ -155,6 +155,21 @@ export class ProctorSession {
       this.cleanups.push(() => target.removeEventListener(ev, fn, opts));
     };
     let unloading = false; // a reload/navigation is not a tab switch
+    let lastScreenshotKeyTime = 0;
+
+    // Detect browser screen-capture / screen-sharing permission calls
+    if (typeof navigator !== "undefined" && navigator.mediaDevices && typeof navigator.mediaDevices.getDisplayMedia === "function") {
+      const origGetDisplayMedia = navigator.mediaDevices.getDisplayMedia.bind(navigator.mediaDevices);
+      navigator.mediaDevices.getDisplayMedia = async (...args) => {
+        this.log("SCREEN_CAPTURE_DETECTED", "Browser screen-sharing or display capture invoked");
+        this.onWarning({ key: "screencap", text: "Screen sharing and screen capture are strictly prohibited during the examination.", tone: "bad" });
+        return origGetDisplayMedia(...args);
+      };
+      this.cleanups.push(() => {
+        navigator.mediaDevices.getDisplayMedia = origGetDisplayMedia;
+      });
+    }
+
     on(window, "pagehide", () => (unloading = true));
     on(document, "visibilitychange", () => {
       if (unloading) return;
@@ -168,6 +183,11 @@ export class ProctorSession {
       this.emitStatus();
     });
     on(window, "blur", () => {
+      // If window blur happened right after a screenshot key/modifier, capture snipping tool event
+      if (Date.now() - lastScreenshotKeyTime < 1500) {
+        this.log("SNIPPING_TOOL_DETECTED", "Screen snipping utility caused window focus loss");
+        this.onWarning({ key: "screenshot", text: "Screen snipping tools are prohibited during the examination.", tone: "bad" });
+      }
       // When the tab is hidden the visibilitychange event covers it
       setTimeout(() => {
         if (document.visibilityState === "visible" && !document.hasFocus()) {
@@ -204,6 +224,8 @@ export class ProctorSession {
       this.log("CONTEXT_MENU");
     });
     on(document, "dragstart", (e) => e.preventDefault());
+
+    // Screenshot & restricted shortcut monitoring on keydown
     on(
       document,
       "keydown",
@@ -211,15 +233,71 @@ export class ProctorSession {
         const e = ev as KeyboardEvent;
         const k = e.key.toLowerCase();
         const mod = e.ctrlKey || e.metaKey;
+
+        // 1. PrintScreen key
+        if (e.key === "PrintScreen" || e.code === "PrintScreen" || e.keyCode === 44) {
+          e.preventDefault();
+          lastScreenshotKeyTime = Date.now();
+          this.log("SCREENSHOT_ATTEMPT", "PrintScreen shortcut detected", { key: e.key, code: e.code });
+          this.onWarning({ key: "screenshot", text: "Taking screenshots is strictly prohibited during the examination.", tone: "bad" });
+          return;
+        }
+
+        // 2. Windows Screen Snipping shortcut (Win + Shift + S)
+        const isWinShiftS = (e.metaKey || e.key === "Meta" || e.key === "OS") && e.shiftKey && (k === "s" || e.code === "KeyS");
+        if (isWinShiftS) {
+          e.preventDefault();
+          lastScreenshotKeyTime = Date.now();
+          this.log("SNIPPING_TOOL_DETECTED", "Windows Screen Snipping shortcut (Win+Shift+S) detected", { shortcut: "Win+Shift+S" });
+          this.onWarning({ key: "screenshot", text: "Screen snipping tools are prohibited during the examination.", tone: "bad" });
+          return;
+        }
+
+        // 3. macOS screenshot shortcuts (Cmd + Shift + 3 / 4 / 5 / 6)
+        const isMacScreenshot = e.metaKey && e.shiftKey && ["3", "4", "5", "6"].includes(e.key);
+        if (isMacScreenshot) {
+          e.preventDefault();
+          lastScreenshotKeyTime = Date.now();
+          this.log("SCREENSHOT_ATTEMPT", `macOS screen capture shortcut (Cmd+Shift+${e.key}) detected`, { shortcut: `Cmd+Shift+${e.key}` });
+          this.onWarning({ key: "screenshot", text: "Taking screenshots is strictly prohibited during the examination.", tone: "bad" });
+          return;
+        }
+
+        // 4. Print or Save-as-PDF shortcut (Ctrl/Cmd + P)
+        if (mod && k === "p") {
+          e.preventDefault();
+          this.log("SCREENSHOT_ATTEMPT", "Print / Save-as-PDF shortcut (Ctrl/Cmd+P) blocked", { shortcut: "Ctrl/Cmd+P" });
+          this.onWarning({ key: "screenshot", text: "Printing or exporting examination content is prohibited.", tone: "bad" });
+          return;
+        }
+
+        // 5. Developer Tools inspection
         const devtools = e.key === "F12" || (mod && e.shiftKey && ["i", "j", "c"].includes(k));
         if (devtools) {
           e.preventDefault();
           this.log("DEVTOOLS_SUSPECTED", `Shortcut ${describe(e)}`);
           return;
         }
-        if ((mod && RESTRICTED_KEYS.has(k)) || e.key === "PrintScreen" || (e.altKey && e.key === "Tab") || (e.metaKey && !e.ctrlKey && k === "tab")) {
+
+        // 6. Generic restricted keyboard shortcuts
+        if ((mod && RESTRICTED_KEYS.has(k)) || (e.altKey && e.key === "Tab") || (e.metaKey && !e.ctrlKey && k === "tab")) {
           e.preventDefault();
           this.log("RESTRICTED_SHORTCUT", `Shortcut ${describe(e)}`);
+        }
+      },
+      { capture: true },
+    );
+
+    // Screenshot monitoring on keyup (for OS platforms firing PrintScreen on keyup)
+    on(
+      document,
+      "keyup",
+      (ev) => {
+        const e = ev as KeyboardEvent;
+        if (e.key === "PrintScreen" || e.code === "PrintScreen" || e.keyCode === 44) {
+          lastScreenshotKeyTime = Date.now();
+          this.log("SCREENSHOT_ATTEMPT", "PrintScreen key released (screenshot suspected)", { event: "keyup" });
+          this.onWarning({ key: "screenshot", text: "Taking screenshots is strictly prohibited.", tone: "bad" });
         }
       },
       { capture: true },

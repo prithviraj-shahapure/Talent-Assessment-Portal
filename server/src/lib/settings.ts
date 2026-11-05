@@ -42,6 +42,9 @@ export const DEFAULT_RISK_RULES: Record<string, RiskRule> = {
   CUT: { label: "Cut attempt", weight: 3, cooldownSec: 10, maxContribution: 9, graceCount: 0, severity: "LOW" },
   CONTEXT_MENU: { label: "Right-click / context menu", weight: 1, cooldownSec: 10, maxContribution: 5, graceCount: 1, severity: "INFO" },
   RESTRICTED_SHORTCUT: { label: "Restricted keyboard shortcut", weight: 2, cooldownSec: 10, maxContribution: 10, graceCount: 1, severity: "LOW" },
+  SCREENSHOT_ATTEMPT: { label: "Screenshot shortcut detected", weight: 12, cooldownSec: 15, maxContribution: 40, graceCount: 0, severity: "MEDIUM" },
+  SNIPPING_TOOL_DETECTED: { label: "Screen snipping tool (Win+Shift+S) detected", weight: 15, cooldownSec: 15, maxContribution: 45, graceCount: 0, severity: "MEDIUM" },
+  SCREEN_CAPTURE_DETECTED: { label: "Browser screen capture / sharing detected", weight: 25, cooldownSec: 30, maxContribution: 50, graceCount: 0, severity: "HIGH" },
   CONNECTION_LOST: { label: "Connection lost", weight: 0, cooldownSec: 30, maxContribution: 0, graceCount: 0, severity: "INFO" },
   DEVTOOLS_SUSPECTED: { label: "Developer tools suspected", weight: 5, cooldownSec: 60, maxContribution: 10, graceCount: 0, severity: "LOW" },
 };

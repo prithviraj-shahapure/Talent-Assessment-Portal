@@ -24,6 +24,7 @@ export interface LiveStatus {
   lastSeenAt: string;
   previewAllowed: boolean;
   multiFaceViolations?: number;
+  screenshotViolations?: number;
 }
 
 /**
@@ -57,6 +58,9 @@ class LiveHub {
       }
       if (typeof payload.multiFaceViolations === "number") {
         s.multiFaceViolations = payload.multiFaceViolations as number;
+      }
+      if (typeof payload.screenshotViolations === "number") {
+        s.screenshotViolations = payload.screenshotViolations as number;
       }
     }
     this.io?.to("hr:live").to(`hr:exam:${examId}`).to(`hr:attempt:${attemptId}`).emit("live:event", { attemptId, examId, ...payload });
