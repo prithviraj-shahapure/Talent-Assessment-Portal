@@ -186,7 +186,7 @@ const commitSchema = z.object({
     z.object({
       sectionTitle: z.string().optional(),
       text: z.string().min(3),
-      type: z.enum(["SINGLE", "MULTIPLE", "TRUE_FALSE", "SHORT", "DESCRIPTIVE", "CODING", "NUMERICAL"]),
+      type: z.enum(["SINGLE", "MULTIPLE", "TRUE_FALSE", "SHORT", "DESCRIPTIVE", "CODING", "NUMERICAL", "PROMPT"]),
       options: z.array(z.object({ key: z.string(), text: z.string() })),
       correctAnswers: z.array(z.string()),
       explanation: z.string().optional().nullable(),

@@ -37,6 +37,7 @@ export const QUESTION_TYPE_LABEL: Record<QuestionType, string> = {
   DESCRIPTIVE: "Descriptive",
   CODING: "Coding",
   NUMERICAL: "Numerical",
+  PROMPT: "Prompt Engineering",
 };
 export const STAGE_LABEL: Record<PipelineStage, string> = {
   REGISTERED: "Registered",

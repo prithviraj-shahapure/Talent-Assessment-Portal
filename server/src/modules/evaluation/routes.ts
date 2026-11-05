@@ -71,7 +71,7 @@ export async function attemptReview(attemptId: string) {
         autoGraded: ans?.autoGraded ?? false,
         evaluator: ans?.evaluator?.name ?? null,
         evaluatorNote: ans?.evaluatorNote ?? null,
-        needsManual: (q.type === "DESCRIPTIVE" || q.type === "CODING" || (q.type === "SHORT" && q.acceptedAnswers.length === 0)) && !!ans?.textAnswer?.trim(),
+        needsManual: (q.type === "DESCRIPTIVE" || q.type === "CODING" || q.type === "PROMPT" || (q.type === "SHORT" && q.acceptedAnswers.length === 0)) && !!ans?.textAnswer?.trim(),
       };
     });
     return {

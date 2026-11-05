@@ -540,7 +540,7 @@ examsRouter.post(
       z.object({
         categoryId: z.string().optional().nullable(),
         difficulty: z.enum(["EASY", "MEDIUM", "HARD"]).optional().nullable(),
-        type: z.enum(["SINGLE", "MULTIPLE", "TRUE_FALSE", "SHORT", "DESCRIPTIVE", "CODING", "NUMERICAL"]).optional().nullable(),
+        type: z.enum(["SINGLE", "MULTIPLE", "TRUE_FALSE", "SHORT", "DESCRIPTIVE", "CODING", "NUMERICAL", "PROMPT"]).optional().nullable(),
         count: z.number().int().min(1, "Pick at least 1 question").max(200, "A rule can pick at most 200 questions"),
         marksEach: z.number().min(0).max(100).default(1),
       }),

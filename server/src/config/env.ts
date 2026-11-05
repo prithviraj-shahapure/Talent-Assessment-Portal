@@ -39,6 +39,10 @@ export const env = {
   },
   /** Let existing HR / Super Admin accounts sign in with Google (only when the Google email matches the account). */
   googleStaffSignIn: (process.env.GOOGLE_STAFF_SIGNIN ?? "true") === "true",
+  ai: {
+    geminiApiKey: process.env.GEMINI_API_KEY ?? "",
+    openaiApiKey: process.env.OPENAI_API_KEY ?? "",
+  },
   judge0Url: process.env.JUDGE0_URL ?? "http://localhost:2358",
   trustProxy: process.env.TRUST_PROXY === "true",
   serveClient: process.env.SERVE_CLIENT === "true",

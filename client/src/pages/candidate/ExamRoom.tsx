@@ -11,6 +11,7 @@ import { acquireMedia, captureFrame, enterFullscreen, mediaStore, stopMedia } fr
 import { ProctorSession, type ProctorStatus, type Warning } from "@/proctoring/ProctorSession";
 import { cn } from "@/lib/cn";
 import CodingIDE from "@/components/coding/CodingIDE";
+import PromptIDE from "@/components/prompt/PromptIDE";
 
 interface Q {
   id: string;
@@ -20,6 +21,7 @@ interface Q {
   negativeMarks: number;
   codeLanguage: string | null;
   codeStarter: string | null;
+  promptMeta?: any;
   options: { id: string; text: string }[];
   answer: { selectedOptionIds: string[]; textAnswer: string | null; markedForReview: boolean } | null;
   hidden?: undefined;
@@ -615,7 +617,7 @@ export default function ExamRoom() {
         <main className="flex min-w-0 flex-1 flex-col">
           <div className="flex-1 overflow-y-auto scrollbar-thin">
             {q ? (
-              <div className={cn("mx-auto px-5 py-6 sm:px-8", q.type === "CODING" ? "max-w-6xl" : "max-w-3xl")}>
+              <div className={cn("mx-auto px-5 py-6 sm:px-8", q.type === "CODING" || q.type === "PROMPT" ? "max-w-6xl" : "max-w-3xl")}>
                 <div className="mb-3 flex flex-wrap items-center gap-2 text-[12px] text-ink-500">
                   <span className="num rounded bg-navy-900 px-2 py-0.5 text-[12px] font-semibold text-white">Question {globalIndex + 1}</span>
                   <span>{QUESTION_TYPE_LABEL[q.type]}</span>·
@@ -1014,6 +1016,18 @@ function AnswerInput({ q, a, attemptId, onChange }: { q: Q; a?: Ans; attemptId?:
         starterCodeRaw={q.codeStarter}
         textAnswer={a?.textAnswer}
         attemptId={attemptId}
+        onChange={(patch) => onChange({ textAnswer: patch.textAnswer })}
+      />
+    );
+  if (q.type === "PROMPT")
+    return (
+      <PromptIDE
+        questionId={q.id}
+        attemptId={attemptId}
+        questionText={q.text}
+        maxMarks={q.marks}
+        promptMeta={q.promptMeta}
+        textAnswer={a?.textAnswer}
         onChange={(patch) => onChange({ textAnswer: patch.textAnswer })}
       />
     );

@@ -1,5 +1,5 @@
 export type Role = "SUPER_ADMIN" | "HR_ADMIN" | "CANDIDATE";
-export type QuestionType = "SINGLE" | "MULTIPLE" | "TRUE_FALSE" | "SHORT" | "DESCRIPTIVE" | "CODING" | "NUMERICAL";
+export type QuestionType = "SINGLE" | "MULTIPLE" | "TRUE_FALSE" | "SHORT" | "DESCRIPTIVE" | "CODING" | "NUMERICAL" | "PROMPT";
 export type Difficulty = "EASY" | "MEDIUM" | "HARD";
 export type PipelineStage = "REGISTERED" | "ELIGIBLE" | "EXAM_SCHEDULED" | "EXAM_COMPLETED" | "EVALUATION" | "SHORTLISTED" | "INTERVIEW" | "SELECTED" | "REJECTED";
 export type RiskLevel = "NORMAL" | "LOW" | "MEDIUM" | "HIGH";
@@ -29,6 +29,15 @@ export interface Question {
   numericTolerance: number | null;
   codeLanguage: string | null;
   codeStarter: string | null;
+  promptMeta?: {
+    title?: string;
+    scenario?: string;
+    requirements?: string[];
+    expectedOutput?: string;
+    criteria?: { name: string; marks: number; description?: string }[];
+    testCases?: { input: string; expectedOutput: string; isHidden?: boolean }[];
+    maxAttempts?: number;
+  } | null;
   tags: string[];
   isActive: boolean;
   sourceType?: string;

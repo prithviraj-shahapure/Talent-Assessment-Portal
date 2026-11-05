@@ -22,6 +22,7 @@ type Q = {
   explanation?: string;
   lang?: string;
   starter?: string;
+  promptMeta?: any;
   tags?: string[];
 };
 
@@ -76,6 +77,68 @@ const QUESTIONS: Q[] = [
   { type: "SHORT", cat: "Programming", diff: "MEDIUM", text: "Which data structure works on the First-In-First-Out (FIFO) principle?", accepted: ["Queue", "A queue"] },
   { type: "CODING", cat: "Programming", diff: "MEDIUM", lang: "python", marks: 10, text: "Write a function `oee(availability, performance, quality)` that returns Overall Equipment Effectiveness as a percentage rounded to one decimal place. Then write a second function that, given a list of daily OEE values, returns the longest run of consecutive days with OEE ≥ 85.", starter: "def oee(availability: float, performance: float, quality: float) -> float:\n    # your code here\n    pass\n\n\ndef longest_good_run(values: list[float]) -> int:\n    # your code here\n    pass\n" },
   { type: "CODING", cat: "Programming", diff: "HARD", lang: "javascript", marks: 10, text: "Given an array of machine downtime events `{ machine: string, start: number, end: number }` (minutes), write a function that returns total downtime per machine, merging overlapping intervals for the same machine.", starter: "function downtimeByMachine(events) {\n  // your code here\n}\n" },
+  // Prompt Engineering Module (CSE, AIML, Data Science)
+  {
+    type: "PROMPT",
+    cat: "Prompt Engineering",
+    diff: "HARD",
+    marks: 10,
+    text: "Zero-Downtime Microservices Database Migration Prompt (CSE Track)",
+    promptMeta: {
+      title: "Zero-Downtime Microservices Database Migration Prompt",
+      scenario: "You are the Principal Database Engineer for an e-commerce platform processing 10,000 orders/minute. The order database runs on PostgreSQL 15. The 'orders' table contains 50M rows. You must add a non-nullable 'fulfillment_hub_id' UUID column with a foreign key constraint and backfill historical data from a legacy warehouse lookup without taking write locks or exceeding 50ms lock timeouts.",
+      requirements: [
+        "Define an authoritative system persona and operating constraints.",
+        "Request a multi-phase backward-compatible migration plan (DDL, backfill batching, triggers, validation).",
+        "Mandate explicit statement_timeout and lock_timeout safety controls.",
+        "Require automated verification queries and a rollback trigger.",
+        "Output strictly valid JSON conforming to an execution plan schema."
+      ],
+      expectedOutput: "Valid JSON schema detailing phase sequence, SQL scripts, backfill queries, and rollback triggers.",
+      maxAttempts: 2,
+    },
+    tags: ["cse", "prompt-engineering", "databases", "postgresql"],
+  },
+  {
+    type: "PROMPT",
+    cat: "Prompt Engineering",
+    diff: "HARD",
+    marks: 10,
+    text: "Few-Shot Chain-of-Thought Defect Classification Prompt (AIML Track)",
+    promptMeta: {
+      title: "Few-Shot Chain-of-Thought Defect Classification Prompt",
+      scenario: "An automated optical inspection (AOI) vision system in Zanvar Group's high-pressure die casting foundry inspects engine blocks. The computer vision model confuses minor hairline surface oxidation with critical subsurface shrinkage porosity. Formulate a Few-Shot Chain-of-Thought (CoT) system prompt to classify defects from visual sensor measurements and telemetry.",
+      requirements: [
+        "Define strict taxonomy and definitions for 4 defect classes: Blowhole, Cold Shut, Shrinkage Porosity, and Surface Oxidation.",
+        "Provide 2 complete Few-Shot exemplars demonstrating step-by-step physical reasoning.",
+        "Enforce strict JSON output with defectType, confidenceScore (0.00 to 1.00), and rootCauseReasoning.",
+        "Include rejection criteria for indeterminate or blurred sensor captures."
+      ],
+      expectedOutput: "Valid JSON schema with defectType, confidenceScore, and rootCauseReasoning.",
+      maxAttempts: 2,
+    },
+    tags: ["aiml", "prompt-engineering", "computer-vision", "manufacturing"],
+  },
+  {
+    type: "PROMPT",
+    cat: "Prompt Engineering",
+    diff: "HARD",
+    marks: 10,
+    text: "Dynamic Feature Engineering & Leakage Detection Prompt (Data Science Track)",
+    promptMeta: {
+      title: "Dynamic Feature Engineering & Leakage Detection Prompt",
+      scenario: "A predictive maintenance model for CNC turning centers suffered from target leakage when historical feature pipelines accidentally computed rolling mean vibration metrics that included sensor logs recorded during the failure incident itself. Write a prompt to analyze a data dictionary and generate leak-free vectorized window aggregations.",
+      requirements: [
+        "Define explicit temporal point-in-time cutoff boundaries to prevent look-ahead bias.",
+        "Specify vectorized 7-day, 30-day, and 90-day rolling aggregation rules.",
+        "Incorporate an automated data leakage risk audit heuristic.",
+        "Request executable Python code with unit test assertions."
+      ],
+      expectedOutput: "Clean Python code block with leak detection audit table and clean rolling window computation.",
+      maxAttempts: 2,
+    },
+    tags: ["datascience", "prompt-engineering", "feature-engineering", "machine-learning"],
+  },
 ];
 
 async function main() {
@@ -172,10 +235,10 @@ async function main() {
     cats[name] = cat.id;
   }
 
-  // Populate Question Bank if empty
-  const qCount = await prisma.question.count();
-  if (qCount === 0) {
-    for (const q of QUESTIONS) {
+  // Populate Question Bank with missing questions
+  for (const q of QUESTIONS) {
+    const existing = await prisma.question.findFirst({ where: { text: q.text } });
+    if (!existing) {
       await prisma.question.create({
         data: {
           type: q.type,
@@ -189,6 +252,7 @@ async function main() {
           explanation: q.explanation ?? null,
           codeLanguage: q.lang ?? null,
           codeStarter: q.starter ?? null,
+          promptMeta: q.promptMeta ?? undefined,
           tags: q.tags ?? [],
           createdById: hr.id,
           options: q.options

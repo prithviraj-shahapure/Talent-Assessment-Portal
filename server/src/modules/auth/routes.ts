@@ -15,6 +15,7 @@ import { env } from "../../config/env";
 import { getSettings } from "../../lib/settings";
 import { redeemInvitation } from "../../lib/invites";
 import { firebaseWebConfig, verifyGoogleIdToken } from "../../lib/google";
+import { firestore } from "../../lib/firestore";
 
 export const authRouter = Router();
 
@@ -213,6 +214,24 @@ authRouter.post(
       } catch (e) {
         inviteMessage = `Account created, but the invitation could not be applied: ${(e as Error).message}`;
       }
+    }
+
+    if (user.candidate) {
+      await firestore.saveCandidate({
+        candidateId: user.candidate.id,
+        userId: user.id,
+        name: user.name,
+        email: user.email,
+        mobile: user.candidate.mobile,
+        college: user.candidate.college,
+        degree: user.candidate.degree,
+        branch: user.candidate.branch,
+        currentYear: user.candidate.currentYear,
+        graduationYear: user.candidate.graduationYear,
+        stage: user.candidate.stage,
+        createdAt: user.candidate.createdAt.toISOString(),
+        updatedAt: user.candidate.updatedAt.toISOString(),
+      });
     }
 
     const verifyUrl = google ? null : await issueVerification(user.id, email, user.name);

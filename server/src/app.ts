@@ -31,6 +31,7 @@ import { settingsRouter } from "./modules/settings/routes";
 import { auditRouter } from "./modules/audit/routes";
 import { reportsRouter } from "./modules/reports/routes";
 import { compilerRouter } from "./modules/compiler/routes";
+import { promptRouter } from "./modules/prompt/routes";
 
 export function createApp() {
   const app = express();
@@ -94,6 +95,7 @@ export function createApp() {
   api.use("/audit", auditRouter);
   api.use("/reports", reportsRouter);
   api.use("/compiler", compilerRouter);
+  api.use("/prompt", promptRouter);
   api.use((_req, res) => res.status(404).json({ error: "Not found" }));
   app.use("/api", api);
 

@@ -1,10 +1,11 @@
 import { useState } from "react";
-import { FileSpreadsheet, FileText, Users } from "lucide-react";
+import { Download, FileSpreadsheet, FileText, Users } from "lucide-react";
 import { download, qs } from "@/lib/api";
 import { useApi } from "@/hooks/useApi";
 import { Button, Card, Field, PageHeader, Select, useToast } from "@/components/ui";
 import { STAGE_LABEL, STAGES } from "@/lib/format";
 import type { Exam } from "@/lib/types";
+import { ExportExcelModal } from "@/components/ExportExcelModal";
 
 export default function Reports() {
   const toast = useToast();
@@ -13,6 +14,7 @@ export default function Reports() {
   const [stage, setStage] = useState("");
   const [candExam, setCandExam] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
+  const [assessmentModalOpen, setAssessmentModalOpen] = useState(false);
   const run = async (key: string, path: string, name: string) => {
     setBusy(key);
     try {
@@ -28,8 +30,36 @@ export default function Reports() {
 
   return (
     <div>
-      <PageHeader title="Reports" subtitle="Download examination results, candidate lists and performance reports. Every export is recorded in the audit log." />
+      <PageHeader
+        title="Reports & Analytics"
+        subtitle="Download official examination workbooks, candidate evaluations, and prompt engineering assessment logs."
+        actions={
+          <Button onClick={() => setAssessmentModalOpen(true)}>
+            <FileSpreadsheet className="h-4 w-4 mr-1.5" /> Export 3-Sheet Assessment (.xlsx)
+          </Button>
+        }
+      />
       <div className="grid gap-4 lg:grid-cols-2">
+        <Card
+          title="3-Sheet Assessment Workbook (Module 4)"
+          subtitle="Candidate Records · Question Performance · Prompt Attempts"
+          className="lg:col-span-2 border-steel-200 bg-steel-50/20"
+        >
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="text-[13px] text-ink-700 max-w-2xl">
+              Generates an XLSX workbook featuring Sheet 1 (Candidate personal, branch, and status records), Sheet 2 (Question-level marks, attempts, and test cases), and Sheet 3 (Raw prompt attempts, AI responses, and evaluation scores).
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <Button onClick={() => run("ax-all", `/excel-reports/assessment-export?scope=all`, "Zanvar-All-Candidates.xlsx")} loading={busy === "ax-all"}>
+                <Download className="h-4 w-4 mr-1" /> Export All Candidates
+              </Button>
+              <Button variant="secondary" onClick={() => setAssessmentModalOpen(true)}>
+                Filtered Export (Session / Branch) →
+              </Button>
+            </div>
+          </div>
+        </Card>
+
         <Card title="Examination results" subtitle="Leaderboard with section-wise scores, result, time taken and proctoring level">
           <Field label="Examination">
             <Select value={eid} onChange={(e) => setExamId(e.target.value)}>
@@ -66,6 +96,8 @@ export default function Reports() {
           <p className="text-[13px] text-ink-700">Open any attempt from <b>Results & Rankings</b> or a candidate's profile and choose <b>PDF report</b>.</p>
         </Card>
       </div>
+
+      <ExportExcelModal open={assessmentModalOpen} onClose={() => setAssessmentModalOpen(false)} />
     </div>
   );
 }

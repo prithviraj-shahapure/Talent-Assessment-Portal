@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { Activity, Copy, FileSpreadsheet, Lock, Pause, Play, Plus, RefreshCw, ShieldAlert, Trash2, Users } from "lucide-react";
+import { Activity, Copy, FileSpreadsheet, Key, Lock, Pause, Play, Plus, RefreshCw, ShieldAlert, Trash2, Users } from "lucide-react";
 import { Badge, Button, Card, Dialog, Field, Input, PageHeader, Select, Spinner, useToast } from "@/components/ui";
 import { api } from "@/lib/api";
 import { useApi } from "@/hooks/useApi";
@@ -50,6 +50,7 @@ export default function SessionManagement() {
   // Create Modal
   const [createOpen, setCreateOpen] = useState(false);
   const [creating, setCreating] = useState(false);
+  const currentRequestId = useRef<string>(crypto.randomUUID());
   const [sessionForm, setSessionForm] = useState({
     sessionName: "",
     examId: "",
@@ -71,20 +72,25 @@ export default function SessionManagement() {
   const [assigning, setAssigning] = useState(false);
 
   const handleCreate = async () => {
+    if (creating) return; // Prevent double-clicking / duplicate request
     if (!sessionForm.sessionName.trim() || !sessionForm.examId) {
       toast("Please provide session name and select an examination", "bad");
       return;
     }
     setCreating(true);
     try {
-      const res = await api<{ session: SessionItem; generatedCode: string }>("/sessions", {
+      const res = await api<{ session: SessionItem; generatedCode: string; reusedExisting?: boolean }>("/sessions", {
         method: "POST",
-        body: sessionForm,
+        body: {
+          ...sessionForm,
+          idempotencyKey: currentRequestId.current,
+          reuseExistingIfOpen: true,
+        },
       });
 
       setCreateOpen(false);
       setRevealedCode(res.generatedCode);
-      toast("Session created successfully!");
+      toast(res.reusedExisting ? "Reopened existing session code!" : "Session created successfully!");
       reload();
     } catch (e) {
       toast((e as Error).message, "bad");
@@ -179,7 +185,10 @@ export default function SessionManagement() {
             <Button variant="secondary" onClick={() => setExportModalOpen(true)}>
               <FileSpreadsheet className="h-4 w-4" /> Export Report (.xlsx)
             </Button>
-            <Button onClick={() => setCreateOpen(true)}>
+            <Button onClick={() => {
+              currentRequestId.current = crypto.randomUUID();
+              setCreateOpen(true);
+            }}>
               <Plus className="h-4 w-4" /> Create Examination Session
             </Button>
           </div>
@@ -267,6 +276,16 @@ export default function SessionManagement() {
                       <div className="inline-flex items-center gap-1">
                         <Button
                           size="sm"
+                          variant="ghost"
+                          onClick={() => {
+                            setRevealedCode(s.codePrefix ? `${s.codePrefix}••••${s.codeLastFour}` : `••••${s.codeLastFour}`);
+                          }}
+                          title="View Session Code"
+                        >
+                          <Key className="h-3.5 w-3.5 text-navy-700" />
+                        </Button>
+                        <Button
+                          size="sm"
                           variant="secondary"
                           onClick={() => nav(`/admin/sessions/${s.id}/control`)}
                           title="Open Session Control Center"
@@ -340,10 +359,10 @@ export default function SessionManagement() {
         size="md"
         footer={
           <>
-            <Button variant="secondary" onClick={() => setCreateOpen(false)}>
+            <Button variant="secondary" disabled={creating} onClick={() => setCreateOpen(false)}>
               Cancel
             </Button>
-            <Button loading={creating} onClick={handleCreate}>
+            <Button loading={creating} disabled={creating} onClick={handleCreate}>
               Generate Session Code
             </Button>
           </>

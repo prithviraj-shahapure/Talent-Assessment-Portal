@@ -2,6 +2,7 @@ import { prisma } from "./prisma";
 import { evaluateAttempt, type Paper } from "./engine";
 import { advanceStage } from "./invites";
 import { liveHub } from "../sockets/hub";
+import { firestore } from "./firestore";
 
 /**
  * Locks and finalises an attempt exactly once. Safe to call concurrently
@@ -57,6 +58,23 @@ export async function finalizeAttempt(attemptId: string, auto: boolean) {
   await advanceStage(a.candidateId, "EXAM_COMPLETED", `${auto ? "Auto-submitted" : "Submitted"}: ${a.exam.title}`);
   // Fully auto-graded attempts are ready for HR evaluation straight away
   if (!a.needsManualEval) await advanceStage(a.candidateId, "EVALUATION", `Auto-evaluated: ${a.exam.title}`);
+  // Cloud Firestore Sync (Module 3)
+  await firestore.saveSubmission({
+    attemptId: a.id,
+    examId: a.examId,
+    candidateId: a.candidateId,
+    sessionId: a.sessionId || null,
+    score: a.score,
+    maxScore: a.maxScore,
+    percentage: a.percentage,
+    passed: a.passed,
+    startedAt: a.startedAt.toISOString(),
+    submittedAt: now.toISOString(),
+    submissionMethod: a.submissionMethod,
+    status: a.status,
+    submittedAtTimestamp: now.getTime(),
+  });
+
   liveHub.attemptEnded(a.id, a.examId, auto ? "AUTO_SUBMITTED" : "SUBMITTED");
   return result;
 }

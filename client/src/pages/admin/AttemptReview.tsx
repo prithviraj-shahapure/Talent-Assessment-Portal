@@ -344,6 +344,84 @@ function QuestionReview({ q, section, onGraded }: { q: ReviewQ; section: string;
                     </div>
                   );
                 })()
+              ) : q.type === "PROMPT" ? (
+                (() => {
+                  let parsed: any = null;
+                  try {
+                    parsed = JSON.parse(q.textAnswer ?? "");
+                  } catch {
+                    /* raw */
+                  }
+                  const attemptsList: any[] = parsed?.attempts || [];
+                  const evalB = parsed?.evaluationBreakdown;
+
+                  return (
+                    <div className="space-y-3">
+                      {attemptsList.length > 0 ? (
+                        <div className="space-y-3">
+                          {attemptsList.map((att: any, idx: number) => (
+                            <div key={idx} className="rounded border border-line bg-canvas p-3 text-xs">
+                              <div className="flex items-center justify-between font-semibold text-ink-700 mb-1.5">
+                                <span>Attempt {att.attemptNumber || idx + 1} Prompt:</span>
+                                {att.submittedAt && (
+                                  <span className="text-[11px] font-normal text-ink-400">
+                                    {new Date(att.submittedAt).toLocaleTimeString()}
+                                  </span>
+                                )}
+                              </div>
+                              <pre className="whitespace-pre-wrap break-words rounded border border-line-strong bg-white p-2.5 font-mono text-[12px] text-ink-900 mb-2">
+                                {att.prompt}
+                              </pre>
+
+                              <span className="font-semibold text-emerald-800 block mb-1">Generated AI Response:</span>
+                              <pre className="whitespace-pre-wrap break-words rounded border border-navy-900 bg-navy-950 p-2.5 font-mono text-[12px] text-emerald-300">
+                                {att.response || "No response generated"}
+                              </pre>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <pre className="whitespace-pre-wrap break-words rounded border border-line bg-canvas p-3 font-sans text-[13px]">
+                          {q.textAnswer}
+                        </pre>
+                      )}
+
+                      {evalB && (
+                        <div className="rounded border border-steel-200 bg-steel-50/40 p-3 text-xs">
+                          <span className="font-semibold text-steel-800 block mb-2">
+                            AI Evaluation Breakdown (6 Dimensions):
+                          </span>
+                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-[11.5px]">
+                            <div className="rounded bg-white p-2 border border-steel-100">
+                              <span className="text-ink-500 block">Problem Understanding:</span>
+                              <b className="text-steel-700">{evalB.problemUnderstanding} / 2.0</b>
+                            </div>
+                            <div className="rounded bg-white p-2 border border-steel-100">
+                              <span className="text-ink-500 block">Prompt Clarity:</span>
+                              <b className="text-steel-700">{evalB.promptClarity} / 2.0</b>
+                            </div>
+                            <div className="rounded bg-white p-2 border border-steel-100">
+                              <span className="text-ink-500 block">Technical Completeness:</span>
+                              <b className="text-steel-700">{evalB.technicalCompleteness} / 2.0</b>
+                            </div>
+                            <div className="rounded bg-white p-2 border border-steel-100">
+                              <span className="text-ink-500 block">Solution Correctness:</span>
+                              <b className="text-steel-700">{evalB.solutionCorrectness} / 2.0</b>
+                            </div>
+                            <div className="rounded bg-white p-2 border border-steel-100">
+                              <span className="text-ink-500 block">Output Quality:</span>
+                              <b className="text-steel-700">{evalB.outputQuality} / 1.0</b>
+                            </div>
+                            <div className="rounded bg-white p-2 border border-steel-100">
+                              <span className="text-ink-500 block">Iteration Improvement:</span>
+                              <b className="text-steel-700">{evalB.improvement} / 1.0</b>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()
               ) : (
                 <pre className="whitespace-pre-wrap break-words rounded border border-line bg-canvas p-3 font-sans text-[13px]">
                   {q.textAnswer}

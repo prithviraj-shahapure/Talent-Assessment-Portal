@@ -44,7 +44,7 @@ questionsRouter.delete(
 );
 
 // ───────────── Questions ─────────────
-const TYPES = ["SINGLE", "MULTIPLE", "TRUE_FALSE", "SHORT", "DESCRIPTIVE", "CODING", "NUMERICAL"] as const;
+const TYPES = ["SINGLE", "MULTIPLE", "TRUE_FALSE", "SHORT", "DESCRIPTIVE", "CODING", "NUMERICAL", "PROMPT"] as const;
 const optionSchema = z.object({ id: z.string().optional(), text: z.string().trim().min(1).max(2000), isCorrect: z.boolean() });
 const questionSchema = z.object({
   type: z.enum(TYPES),
@@ -58,6 +58,7 @@ const questionSchema = z.object({
   numericTolerance: z.number().min(0).optional().nullable(),
   codeLanguage: z.string().max(40).optional().nullable(),
   codeStarter: z.string().max(10000).optional().nullable(),
+  promptMeta: z.any().optional().nullable(),
   tags: z.array(z.string().trim().min(1).max(40)).max(15).default([]),
   options: z.array(optionSchema).max(10).default([]),
 });
@@ -189,9 +190,15 @@ questionsRouter.post(
   ah(async (req, res) => {
     const q = await prisma.question.findUnique({ where: { id: req.params.id }, include: { options: true } });
     if (!q) throw notFound("Question");
-    const { id: _id, createdAt: _c, updatedAt: _u, options, createdById: _cb, ...rest } = q;
+    const { id: _id, createdAt: _c, updatedAt: _u, options, createdById: _cb, promptMeta, ...rest } = q;
     const copy = await prisma.question.create({
-      data: { ...rest, text: `${q.text} (copy)`, createdById: req.user!.id, options: { create: options.map((o) => ({ text: o.text, isCorrect: o.isCorrect, order: o.order })) } },
+      data: {
+        ...rest,
+        promptMeta: (promptMeta ?? undefined) as any,
+        text: `${q.text} (copy)`,
+        createdById: req.user!.id,
+        options: { create: options.map((o) => ({ text: o.text, isCorrect: o.isCorrect, order: o.order })) },
+      },
     });
     res.status(201).json(copy);
   }),

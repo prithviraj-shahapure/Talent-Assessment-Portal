@@ -320,7 +320,7 @@ attemptsRouter.get(
     // Correct answers, accepted answers and explanations are never selected here.
     const questions = await prisma.question.findMany({
       where: { id: { in: qIds } },
-      select: { id: true, type: true, text: true, codeLanguage: true, codeStarter: true, negativeMarks: true, options: { select: { id: true, text: true } } },
+      select: { id: true, type: true, text: true, codeLanguage: true, codeStarter: true, promptMeta: true, negativeMarks: true, options: { select: { id: true, text: true } } },
     });
     const qMap = new Map(questions.map((q) => [q.id, q]));
     const ansMap = new Map(fresh.answers.map((x) => [x.questionId, x]));
@@ -366,6 +366,7 @@ attemptsRouter.get(
                     negativeMarks: fresh.exam.negativeMarking ? q.negativeMarks : 0,
                     codeLanguage: q.codeLanguage,
                     codeStarter: q.codeStarter,
+                    promptMeta: q.promptMeta,
                     options: pq.optionOrder.map((id) => ({ id, text: optionsById.get(id)?.text ?? "" })),
                     answer: ans ? { selectedOptionIds: ans.selectedOptionIds, textAnswer: ans.textAnswer, markedForReview: ans.markedForReview } : null,
                   };

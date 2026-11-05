@@ -13,7 +13,7 @@ export interface ParsedQuestion {
   sectionTitle?: string;
   questionNumber?: string;
   text: string;
-  type: "SINGLE" | "MULTIPLE" | "TRUE_FALSE" | "SHORT" | "DESCRIPTIVE" | "CODING" | "NUMERICAL";
+  type: "SINGLE" | "MULTIPLE" | "TRUE_FALSE" | "SHORT" | "DESCRIPTIVE" | "CODING" | "NUMERICAL" | "PROMPT";
   options: ParsedOption[];
   correctAnswers: string[]; // e.g. ["A"], ["B", "C"], or ["30"]
   explanation?: string;

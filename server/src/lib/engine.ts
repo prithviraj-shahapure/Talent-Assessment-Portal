@@ -21,7 +21,7 @@ export interface PaperSection {
 export type Paper = PaperSection[];
 
 const OPTION_TYPES: QuestionType[] = ["SINGLE", "MULTIPLE", "TRUE_FALSE"];
-export const MANUAL_TYPES: QuestionType[] = ["DESCRIPTIVE", "CODING"];
+export const MANUAL_TYPES: QuestionType[] = ["DESCRIPTIVE", "CODING", "PROMPT"];
 
 /** Builds a frozen, per-candidate question paper. Random-rule picks and order are fixed at start. */
 export async function buildPaper(examId: string): Promise<{ paper: Paper; maxScore: number }> {

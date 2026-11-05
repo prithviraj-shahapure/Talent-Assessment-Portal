@@ -43,6 +43,7 @@ enum QuestionType {
   DESCRIPTIVE
   CODING
   NUMERICAL
+  PROMPT
 }
 
 enum Difficulty {
@@ -204,6 +205,7 @@ model Question {
   numericTolerance Float?
   codeLanguage    String?
   codeStarter     String?
+  promptMeta      Json?
   tags            String[]         @default([])
   isActive        Boolean          @default(true)
   sourceType      String           @default("MANUAL") // MANUAL | TXT_IMPORT | AI_GENERATED
@@ -468,6 +470,7 @@ model ExamSession {
   examId          String
   exam            Exam             @relation(fields: [examId], references: [id], onDelete: Cascade)
   sessionCodeHash String           @unique
+  idempotencyKey  String?          @unique
   codeLastFour    String
   codePrefix      String?
   startsAt        DateTime
@@ -650,4 +653,48 @@ model SystemSetting {
   key       String   @id
   value     Json
   updatedAt DateTime @updatedAt
+}
+
+// ───────────────────────── Prompt Engineering Module ─────────────────────────
+
+model PromptAttempt {
+  id              String   @id @default(cuid())
+  attemptId       String
+  questionId      String
+  candidateId     String
+  attemptNumber   Int      // 1 or 2
+  prompt          String
+  aiResponse      String?
+  testCaseResults Json?
+  evaluation      Json?
+  score           Float?
+  submittedAt     DateTime @default(now())
+  createdAt       DateTime @default(now())
+
+  @@index([attemptId, questionId])
+  @@index([candidateId])
+}
+
+model EvaluationResult {
+  id                    String   @id @default(cuid())
+  attemptId             String
+  questionId            String
+  candidateId           String
+  problemUnderstanding  Float?
+  promptClarity         Float?
+  technicalCompleteness Float?
+  solutionCorrectness   Float?
+  outputQuality         Float?
+  improvement           Float?
+  totalMarksAwarded     Float?
+  maxMarks              Float
+  testCasesPassed       Int      @default(0)
+  testCasesFailed       Int      @default(0)
+  isManualOverride      Boolean  @default(false)
+  evaluatorNotes        String?
+  evaluatedById         String?
+  evaluatedAt           DateTime @default(now())
+
+  @@unique([attemptId, questionId])
+  @@index([candidateId])
 }

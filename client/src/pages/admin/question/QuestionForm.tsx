@@ -24,6 +24,14 @@ export function QuestionForm({ question, categories, onClose, onSaved }: { quest
   const [tolerance, setTolerance] = useState<string>(question?.numericTolerance != null ? String(question.numericTolerance) : "0");
   const [codeLanguage, setCodeLanguage] = useState(question?.codeLanguage ?? "all");
   const [codeStarter, setCodeStarter] = useState(question?.codeStarter ?? "");
+  const [promptTitle, setPromptTitle] = useState(question?.promptMeta?.title ?? "");
+  const [promptScenario, setPromptScenario] = useState(question?.promptMeta?.scenario ?? "");
+  const [promptRequirements, setPromptRequirements] = useState(
+    question?.promptMeta?.requirements?.join("\n") ?? ""
+  );
+  const [promptExpectedOutput, setPromptExpectedOutput] = useState(
+    question?.promptMeta?.expectedOutput ?? ""
+  );
   const [tags, setTags] = useState<string[]>(question?.tags ?? []);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -54,6 +62,19 @@ export function QuestionForm({ question, categories, onClose, onSaved }: { quest
       numericTolerance: type === "NUMERICAL" ? Number(tolerance || 0) : null,
       codeLanguage: type === "CODING" ? codeLanguage : null,
       codeStarter: type === "CODING" ? codeStarter : null,
+      promptMeta:
+        type === "PROMPT"
+          ? {
+              title: promptTitle.trim() || undefined,
+              scenario: promptScenario.trim() || undefined,
+              requirements: promptRequirements
+                .split("\n")
+                .map((r) => r.trim())
+                .filter(Boolean),
+              expectedOutput: promptExpectedOutput.trim() || undefined,
+              maxAttempts: 2,
+            }
+          : null,
       tags,
       options: opts,
     };
@@ -168,6 +189,24 @@ export function QuestionForm({ question, categories, onClose, onSaved }: { quest
             </Field>
           </div>
         )}
+        {type === "PROMPT" && (
+          <div className="space-y-3 rounded-lg border border-steel-200 bg-steel-50/30 p-3">
+            <span className="font-semibold text-steel-900 block text-xs">Prompt Engineering Scenario Configuration</span>
+            <Field label="Assessment Title" hint="e.g. Zero-Downtime Microservices Migration Prompt">
+              <Input value={promptTitle} onChange={(e) => setPromptTitle(e.target.value)} placeholder="Title of the prompt problem" />
+            </Field>
+            <Field label="Scenario Description" hint="Detailed background, domain constraints and problem setting">
+              <Textarea rows={3} value={promptScenario} onChange={(e) => setPromptScenario(e.target.value)} placeholder="Describe the technical scenario..." />
+            </Field>
+            <Field label="Technical Requirements" hint="Enter one requirement per line">
+              <Textarea rows={4} value={promptRequirements} onChange={(e) => setPromptRequirements(e.target.value)} placeholder="1. Define system role and constraints&#10;2. Multi-phase backward compatible DDL&#10;3. Lock timeout configuration" />
+            </Field>
+            <Field label="Expected Output Format" hint="e.g. Structured JSON or Python code">
+              <Input value={promptExpectedOutput} onChange={(e) => setPromptExpectedOutput(e.target.value)} placeholder="e.g. Structured JSON matching execution plan" />
+            </Field>
+          </div>
+        )}
+        {type === "PROMPT" && <Alert tone="navy">Prompt Engineering questions permit up to 2 candidate attempts and support automated rubric evaluation with HR manual override capability.</Alert>}
         {(type === "DESCRIPTIVE" || type === "CODING") && <Alert tone="navy">This question type is evaluated manually in Evaluation & Review.</Alert>}
 
         <div className="grid gap-3 sm:grid-cols-3">

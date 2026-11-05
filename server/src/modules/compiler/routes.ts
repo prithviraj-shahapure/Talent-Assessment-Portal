@@ -138,7 +138,7 @@ const RunSchema = z.object({
 });
 
 // Helper for local sandbox execution fallback when Judge0 is not running
-async function executeLocal(lang: "c" | "cpp" | "java" | "python", code: string, stdin: string) {
+export async function executeLocal(lang: "c" | "cpp" | "java" | "python", code: string, stdin: string) {
   const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "zanvar-exec-"));
   const start = Date.now();
 

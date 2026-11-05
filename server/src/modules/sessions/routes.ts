@@ -16,6 +16,7 @@ import {
 import { checkEligibility, type Eligibility } from "../../lib/invites";
 import { AUTH_COOKIE, signSession } from "../../lib/tokens";
 import { sessionCookieOptions } from "../../lib/cookies";
+import { firestore } from "../../lib/firestore";
 
 export const sessionsRouter = Router();
 
@@ -626,74 +627,176 @@ const createSessionSchema = z.object({
   maxAttempts: z.number().int().min(1).max(10).default(1),
   status: z.enum(["SCHEDULED", "ACTIVE", "PAUSED"]).default("SCHEDULED"),
   eligibility: z.record(z.unknown()).optional().nullable(),
+  idempotencyKey: z.string().trim().min(8).max(128).optional().nullable(),
+  reuseExistingIfOpen: z.boolean().default(false),
 });
 
 sessionsRouter.post(
   "/",
   ah(async (req, res) => {
-    const body = parse(createSessionSchema, req.body);
+    let body: z.infer<typeof createSessionSchema>;
+    try {
+      body = parse(createSessionSchema, req.body);
+    } catch (parseErr) {
+      await prisma.sessionAuditLog.create({
+        data: {
+          sessionId: "NONE",
+          eventType: "SESSION_CREATION_FAILED",
+          metadata: { reason: "Validation Failed", error: (parseErr as Error).message },
+          ipAddress: clientIp(req),
+        },
+      });
+      throw parseErr;
+    }
 
     if (body.endsAt <= body.startsAt) {
       throw badRequest("Session end time must be after start time");
     }
 
+    // 1. Idempotency Check: if identical clientRequestId/idempotencyKey was already processed, return existing
+    if (body.idempotencyKey) {
+      const existingSession = await prisma.examSession.findUnique({
+        where: { idempotencyKey: body.idempotencyKey },
+      });
+      if (existingSession) {
+        return res.status(200).json({
+          session: existingSession,
+          generatedCode: existingSession.codePrefix ? `${existingSession.codePrefix}...${existingSession.codeLastFour}` : existingSession.codeLastFour,
+          isDuplicatePrevented: true,
+        });
+      }
+    }
+
+    // 2. Reopening Check: Reuse existing session if requested or open
+    if (body.reuseExistingIfOpen) {
+      const existingOpen = await prisma.examSession.findFirst({
+        where: {
+          examId: body.examId,
+          sessionName: body.sessionName,
+          status: { in: ["SCHEDULED", "ACTIVE", "PAUSED"] },
+          endsAt: { gt: new Date() },
+        },
+      });
+      if (existingOpen) {
+        return res.status(200).json({
+          session: existingOpen,
+          generatedCode: existingOpen.codePrefix ? `${existingOpen.codePrefix}...${existingOpen.codeLastFour}` : existingOpen.codeLastFour,
+          reusedExisting: true,
+        });
+      }
+    }
+
     const exam = await prisma.exam.findUnique({ where: { id: body.examId } });
     if (!exam) throw notFound("Examination");
 
-    // Generate or use custom code
-    let rawCode: string;
-    if (body.customCode && body.customCode.trim().length >= 3) {
-      rawCode = body.customCode.trim().toUpperCase();
-    } else {
-      rawCode = generateRandomSessionCode("ZG");
+    // 3. Generate unique session code with collision prevention loop
+    let rawCode = "";
+    let normCode = "";
+    let codeHash = "";
+    let attemptsLeft = 5;
+
+    while (attemptsLeft > 0) {
+      if (body.customCode && body.customCode.trim().length >= 3) {
+        rawCode = body.customCode.trim().toUpperCase();
+        normCode = normalizeSessionCode(rawCode);
+        codeHash = hashSessionCode(normCode);
+        const existing = await prisma.examSession.findUnique({ where: { sessionCodeHash: codeHash } });
+        if (existing) {
+          await prisma.sessionAuditLog.create({
+            data: {
+              sessionId: "NONE",
+              eventType: "SESSION_CREATION_FAILED",
+              metadata: { reason: "Custom code already in use", code: rawCode },
+              ipAddress: clientIp(req),
+            },
+          });
+          throw badRequest(`Session code '${rawCode}' is already in use. Please specify a different code.`);
+        }
+        break;
+      } else {
+        rawCode = generateRandomSessionCode("ZG");
+        normCode = normalizeSessionCode(rawCode);
+        codeHash = hashSessionCode(normCode);
+        const existing = await prisma.examSession.findUnique({ where: { sessionCodeHash: codeHash } });
+        if (!existing && firestore.reserveSessionCode(codeHash, "PENDING")) {
+          break; // Unique code reserved
+        }
+        attemptsLeft--;
+      }
     }
 
-    const normCode = normalizeSessionCode(rawCode);
-    const codeHash = hashSessionCode(normCode);
-
-    // Uniqueness validation
-    const existing = await prisma.examSession.findUnique({
-      where: { sessionCodeHash: codeHash },
-    });
-    if (existing) {
-      throw badRequest(`Session code '${rawCode}' is already in use. Please specify a different code.`);
+    if (!codeHash) {
+      await prisma.sessionAuditLog.create({
+        data: {
+          sessionId: "NONE",
+          eventType: "SESSION_CREATION_FAILED",
+          metadata: { reason: "Code generation collision limit reached" },
+          ipAddress: clientIp(req),
+        },
+      });
+      throw badRequest("Could not generate a unique session code. Please try again or specify a custom code.");
     }
 
     const lastFour = rawCode.slice(-4);
     const prefix = rawCode.length > 4 ? rawCode.slice(0, 4) : "";
 
-    const session = await prisma.examSession.create({
-      data: {
-        sessionName: body.sessionName,
-        examId: body.examId,
-        sessionCodeHash: codeHash,
-        codeLastFour: lastFour,
-        codePrefix: prefix,
-        startsAt: body.startsAt,
-        endsAt: body.endsAt,
-        maxCandidates: body.maxCandidates,
-        maxAttempts: body.maxAttempts,
-        status: body.status as SessionStatus,
-        eligibility: (body.eligibility ?? undefined) as any,
-        createdById: req.user!.id,
-      },
-    });
-
-    await prisma.sessionAuditLog.create({
-      data: {
-        sessionId: session.id,
-        eventType: "SESSION_CREATED",
-        metadata: {
-          sessionName: session.sessionName,
+    // 4. Atomic Database Transaction
+    const session = await prisma.$transaction(async (tx) => {
+      const created = await tx.examSession.create({
+        data: {
+          sessionName: body.sessionName,
+          examId: body.examId,
+          sessionCodeHash: codeHash,
+          idempotencyKey: body.idempotencyKey || undefined,
           codeLastFour: lastFour,
+          codePrefix: prefix,
+          startsAt: body.startsAt,
+          endsAt: body.endsAt,
+          maxCandidates: body.maxCandidates,
+          maxAttempts: body.maxAttempts,
+          status: body.status as SessionStatus,
+          eligibility: (body.eligibility ?? undefined) as any,
+          createdById: req.user!.id,
         },
-        ipAddress: clientIp(req),
-      },
+      });
+
+      await tx.sessionAuditLog.create({
+        data: {
+          sessionId: created.id,
+          eventType: "SESSION_CREATED",
+          metadata: {
+            sessionName: created.sessionName,
+            codeLastFour: lastFour,
+            idempotencyKey: body.idempotencyKey || null,
+          },
+          ipAddress: clientIp(req),
+        },
+      });
+
+      return created;
     });
 
     await audit(req, "session.create", "ExamSession", session.id, {
       name: session.sessionName,
       examId: session.examId,
+    });
+
+    // 5. Cloud Firestore Sync (Module 3)
+    await firestore.saveExamSession({
+      sessionId: session.id,
+      sessionName: session.sessionName,
+      examId: session.examId,
+      sessionCodeHash: session.sessionCodeHash,
+      codeLastFour: session.codeLastFour,
+      codePrefix: session.codePrefix || undefined,
+      startsAt: session.startsAt.toISOString(),
+      endsAt: session.endsAt.toISOString(),
+      maxCandidates: session.maxCandidates,
+      maxAttempts: session.maxAttempts,
+      status: session.status,
+      idempotencyKey: session.idempotencyKey || undefined,
+      createdById: session.createdById || "system",
+      createdAt: session.createdAt.toISOString(),
     });
 
     // Plaintext code is returned ONLY here
