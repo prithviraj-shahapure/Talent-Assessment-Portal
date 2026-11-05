@@ -23,7 +23,7 @@ export const SUPPORTED_LANGUAGES: Record<string, LanguageMeta> = {
   c: {
     id: "c",
     name: "C",
-    runtime: "GCC 11.1",
+    runtime: "  11.1",
     judge0Id: 50,
     monacoLang: "c",
     extension: "c",
@@ -38,7 +38,7 @@ int main() {
   cpp: {
     id: "cpp",
     name: "C++",
-    runtime: "G++ 11.1",
+    runtime: "   11.1",
     judge0Id: 54,
     monacoLang: "cpp",
     extension: "cpp",
@@ -54,7 +54,7 @@ int main() {
   java: {
     id: "java",
     name: "Java",
-    runtime: "OpenJDK 17",
+    runtime: "      17",
     judge0Id: 62,
     monacoLang: "java",
     extension: "java",
@@ -228,7 +228,7 @@ async function executeLocal(lang: "c" | "cpp" | "java" | "python", code: string,
       const outPath = path.join(tmpDir, outExt);
       await fs.writeFile(srcPath, code, "utf-8");
 
-      const compiler = lang === "c" ? "gcc" : "g++";
+      const compiler = lang === "c" ? " " : "  ";
 
       // Compile
       const compileRes = await new Promise<{ ok: boolean; stderr: string }>((resolve) => {
