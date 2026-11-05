@@ -83,7 +83,16 @@ authRouter.post(
     if (user.role !== "CANDIDATE" && !env.googleStaffSignIn) throw unauthorized("Staff accounts must sign in with their password.");
     if (!user.isActive) throw unauthorized("This account has been deactivated. Contact HR.");
     const linking = !user.googleUid;
-    user = await prisma.user.update({ where: { id: user.id }, data: { googleUid: g.uid, emailVerified: true, lastLoginAt: new Date() } });
+    const targetRole = g.roleClaim || user.role;
+    user = await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        googleUid: g.uid,
+        role: targetRole,
+        emailVerified: true,
+        lastLoginAt: new Date(),
+      },
+    });
     res.cookie(AUTH_COOKIE, signSession(user.id, user.role), sessionCookieOptions());
     await audit(req, linking ? "auth.google_linked" : "auth.login_google", "User", user.id, { email: g.email }, user.id);
     res.json({ user: { id: user.id, name: user.name, email: user.email, role: user.role, emailVerified: user.emailVerified } });

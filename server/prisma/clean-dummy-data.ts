@@ -85,6 +85,23 @@ async function clean() {
     },
   });
 
+  await prisma.user.upsert({
+    where: { email: "cyclistprithvi@gmail.com" },
+    update: {
+      role: "SUPER_ADMIN",
+      isActive: true,
+      emailVerified: true,
+    },
+    create: {
+      email: "cyclistprithvi@gmail.com",
+      name: "Prithviraj Shahapure",
+      role: "SUPER_ADMIN",
+      isActive: true,
+      emailVerified: true,
+      passwordHash: superHash,
+    },
+  });
+
   // Verify counts
   const users = await prisma.user.count();
   const cands = await prisma.candidateProfile.count();

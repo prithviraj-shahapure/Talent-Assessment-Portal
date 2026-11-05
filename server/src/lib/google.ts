@@ -16,6 +16,7 @@ export interface GoogleIdentity {
   uid: string;
   email: string;
   name: string;
+  roleClaim?: "SUPER_ADMIN" | "HR_ADMIN";
 }
 
 export function googleEnabled() {
@@ -51,5 +52,20 @@ export async function verifyGoogleIdToken(idToken: string): Promise<GoogleIdenti
   const email = typeof payload.email === "string" ? payload.email.toLowerCase() : "";
   if (!email || payload.email_verified !== true) throw unauthorized("Your Google account does not have a verified email address");
   const name = (typeof payload.name === "string" && payload.name.trim()) || email.split("@")[0];
-  return { uid: payload.sub, email, name: name.slice(0, 120) };
+
+  let roleClaim: "SUPER_ADMIN" | "HR_ADMIN" | undefined = undefined;
+  const rawRole = String(payload.role || "").toUpperCase().replace(/[\s_-]+/g, "");
+  if (
+    rawRole === "SUPERADMIN" ||
+    rawRole === "ADMIN" ||
+    payload.admin === true ||
+    payload.superadmin === true ||
+    payload.super_admin === true
+  ) {
+    roleClaim = "SUPER_ADMIN";
+  } else if (rawRole === "HRADMIN" || rawRole === "HR") {
+    roleClaim = "HR_ADMIN";
+  }
+
+  return { uid: payload.sub, email, name: name.slice(0, 120), roleClaim };
 }
