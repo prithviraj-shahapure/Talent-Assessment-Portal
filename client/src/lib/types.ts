@@ -43,8 +43,38 @@ export interface Question {
   sourceType?: string;
   approvalStatus?: string;
   sectionTitle?: string | null;
+  documentId?: string | null;
+  documentSectionId?: string | null;
+  questionOrder?: number;
   options: (Option & { id: string })[];
   _count?: { examQuestions: number };
+}
+
+export interface DocumentSection {
+  id: string;
+  documentId: string;
+  sectionTitle: string;
+  sectionOrder: number;
+  totalQuestions: number;
+  totalMarks: number;
+  timeLimitMinutes?: number | null;
+  questions?: Question[];
+}
+
+export interface ExamDocument {
+  id: string;
+  documentName: string;
+  originalFileName: string;
+  fileType: string;
+  fileSize: number;
+  uploadedAt: string;
+  uploadedBy?: string | null;
+  processingStatus: "PARSED" | "PROCESSING" | "ASSIGNED" | "ERROR";
+  totalSections: number;
+  totalQuestions: number;
+  assignedStageId?: string | null;
+  assignedExamId?: string | null;
+  sections?: DocumentSection[];
 }
 export interface Exam {
   id: string;

@@ -25,12 +25,21 @@ export interface ParsedQuestion {
   sourceType: "TXT_IMPORT" | "AI_GENERATED";
 }
 
+export interface ExtractedSection {
+  sectionTitle: string;
+  sectionOrder: number;
+  questions: ParsedQuestion[];
+  totalQuestions: number;
+  totalMarks: number;
+}
+
 export interface ParseResult {
   sectionsDetected: string[];
   questions: ParsedQuestion[];
   totalQuestions: number;
   validQuestions: number;
   invalidQuestions: number;
+  sections: ExtractedSection[];
 }
 
 // Regex patterns
@@ -58,19 +67,55 @@ const KNOWN_SECTIONS = [
 
 export function isSectionHeading(line: string): string | null {
   const trimmed = line.trim();
-  if (!trimmed || trimmed.length > 80) return null;
-  // If line ends with ':' or doesn't have options/answer indicators
-  const upper = trimmed.toUpperCase().replace(/^#+\s*/, "").replace(/^\[\s*|\s*\]$/g, "");
+  if (!trimmed || trimmed.length > 100) return null;
+
+  // Do not treat markdown table rows, option lines, or question starts as section headings
+  if (trimmed.startsWith("|") && trimmed.endsWith("|")) return null;
+  if (/^[A-Ha-h0-9][\.\)\:]\s+/.test(trimmed)) return null;
+  if (/^(?:Q(?:uestion)?\s*\d+|\b\d+[\.\)\-])\s+/i.test(trimmed)) return null;
+  if (/^(?:Correct\s+Answer|Correct|Answer|Ans|Explanation|Exp|Marks?|Points?|Difficulty)\s*[:\-=]/i.test(trimmed)) return null;
+
+  // Strip markdown hashes, dashes, bullet points, asterisks, brackets, equal signs
+  const clean = trimmed
+    .replace(/^#+\s*/, "")
+    .replace(/^[=\-\*\_]{2,}\s*/, "")
+    .replace(/\s*[=\-\*\_]{2,}$/, "")
+    .replace(/^\[\s*|\s*\]$/g, "")
+    .trim();
+
+  const upper = clean.toUpperCase();
+
+  // 1. Explicit Section / Stage / Part pattern:
+  // "Section A: Programming", "Section 1 - Aptitude Test", "Section B: Database Management",
+  // "Stage 1: Technical Assessment", "Part A: Verbal Ability", "Section A", "Section 1"
+  const secCodeMatch = clean.match(/^(?:SECTION|STAGE|PART)\s+([A-Za-z0-9]+)(?:\s*[:\-–]\s*(.+))?$/i);
+  if (secCodeMatch) {
+    const code = secCodeMatch[1].trim().toUpperCase();
+    const title = secCodeMatch[2]?.trim();
+    if (title) {
+      return `Section ${code}: ${title}`;
+    }
+    return `Section ${code}`;
+  }
+
+  // 2. Generic label without code: "Section: Programming", "Stage: Aptitude", "Section - Technical Assessment"
+  const genericMatch = clean.match(/^(?:SECTION|STAGE|PART)\s*[:\-–]\s*(.+)$/i);
+  if (genericMatch && genericMatch[1]) {
+    return genericMatch[1].trim();
+  }
+
+  // 3. Known section names (e.g. "APTITUDE", "LOGICAL REASONING", "TECHNICAL", "COMPUTER NETWORKS", etc.)
   for (const s of KNOWN_SECTIONS) {
-    if (upper === s || upper === `${s}:` || upper === `--- ${s} ---` || upper === `=== ${s} ===`) {
-      return s;
+    if (upper === s || upper === `${s}:` || upper.startsWith(`${s} -`) || upper.startsWith(`${s} :`) || upper.startsWith(`${s} –`)) {
+      return clean.replace(/[:\-–]$/, "").trim();
     }
   }
-  // Generic test heading like "SECTION 1: APTITUDE" or "STAGE 2: TECHNICAL TEST"
-  const stageMatch = upper.match(/^(?:STAGE\s*\d+|SECTION\s*[A-Z0-9]+)\s*[:\-]\s*(.+)$/);
-  if (stageMatch && stageMatch[1]) {
-    return stageMatch[1].trim();
+
+  // 4. Markdown headers containing test/assessment/domain keywords (e.g. "### Programming Assessment")
+  if (trimmed.startsWith("#") && /(?:test|assessment|section|stage|module|aptitude|reasoning|programming|database|network|systems|verbal|coding)/i.test(clean)) {
+    return clean;
   }
+
   return null;
 }
 
@@ -79,7 +124,9 @@ export function parseTxtQuestions(content: string, defaultSection?: string): Par
   const questions: ParsedQuestion[] = [];
   const sectionsDetected = new Set<string>();
 
-  let currentSection = defaultSection || "Aptitude Test";
+  // If no sections are detected in the document, default to "General Questions"
+  let currentSection = defaultSection || "General Questions";
+  let hasExplicitSection = false;
   let currentQ: Partial<ParsedQuestion> | null = null;
   let textBuffer: string[] = [];
   let readingMode: "QUESTION" | "EXPLANATION" | "OPTIONS" = "QUESTION";
@@ -93,8 +140,10 @@ export function parseTxtQuestions(content: string, defaultSection?: string): Par
       return;
     }
 
+    const secTitle = currentQ?.sectionTitle || currentSection;
+
     const q: ParsedQuestion = {
-      sectionTitle: currentQ?.sectionTitle || currentSection,
+      sectionTitle: secTitle,
       questionNumber: currentQ?.questionNumber,
       text: qText,
       type: currentQ?.type || "SINGLE",
@@ -164,11 +213,22 @@ export function parseTxtQuestions(content: string, defaultSection?: string): Par
       continue;
     }
 
+    // Preserve Markdown / ASCII table rows inside question or explanation text
+    if (line.startsWith("|") && line.endsWith("|")) {
+      if (readingMode === "EXPLANATION" && currentQ) {
+        currentQ.explanation = (currentQ.explanation ? currentQ.explanation + "\n" : "") + line;
+      } else {
+        textBuffer.push(line);
+      }
+      continue;
+    }
+
     // Check if line is a section heading
     const detectedSec = isSectionHeading(line);
     if (detectedSec) {
       finalizeQuestion();
       currentSection = detectedSec;
+      hasExplicitSection = true;
       sectionsDetected.add(detectedSec);
       continue;
     }
@@ -351,11 +411,35 @@ export function parseTxtQuestions(content: string, defaultSection?: string): Par
 
   const validCount = questions.filter((q) => q.status === "VALID").length;
 
+  // Build independent sections preserving exact document appearance order
+  const sectionsMap = new Map<string, ParsedQuestion[]>();
+  for (const q of questions) {
+    const title = q.sectionTitle || defaultSection || "General Questions";
+    if (!sectionsMap.has(title)) {
+      sectionsMap.set(title, []);
+    }
+    sectionsMap.get(title)!.push(q);
+  }
+
+  const sections: ExtractedSection[] = [];
+  let secOrder = 0;
+  for (const [title, secQuestions] of sectionsMap.entries()) {
+    const totalMarks = secQuestions.reduce((sum, q) => sum + (q.marks || 1), 0);
+    sections.push({
+      sectionTitle: title,
+      sectionOrder: secOrder++,
+      questions: secQuestions,
+      totalQuestions: secQuestions.length,
+      totalMarks,
+    });
+  }
+
   return {
     sectionsDetected: Array.from(sectionsDetected),
     questions,
     totalQuestions: questions.length,
     validQuestions: validCount,
     invalidQuestions: questions.length - validCount,
+    sections,
   };
 }

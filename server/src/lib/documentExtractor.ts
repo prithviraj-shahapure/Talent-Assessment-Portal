@@ -115,14 +115,24 @@ export async function extractTextFromPdf(buffer: Buffer): Promise<string> {
 }
 
 /**
- * Extracts raw text from Microsoft Word (.docx) files using mammoth.
+ * Extracts formatted markdown text from Microsoft Word (.docx) files using mammoth.
+ * Preserves headings (# Heading), lists, and tables (| col1 | col2 |).
  */
 export async function extractTextFromDocx(buffer: Buffer): Promise<string> {
   try {
-    const result = await mammoth.extractRawText({ buffer });
-    return sanitizeText(result.value);
+    const mdResult = await (mammoth as any).convertToMarkdown({ buffer });
+    if (mdResult?.value && mdResult.value.trim().length > 10) {
+      return sanitizeText(mdResult.value);
+    }
+    const rawResult = await mammoth.extractRawText({ buffer });
+    return sanitizeText(rawResult.value);
   } catch (err: any) {
-    throw badRequest(`Failed to read Word (.docx) document: ${err.message || "corrupted file"}`);
+    try {
+      const rawResult = await mammoth.extractRawText({ buffer });
+      return sanitizeText(rawResult.value);
+    } catch {
+      throw badRequest(`Failed to read Word (.docx) document: ${err.message || "corrupted file"}`);
+    }
   }
 }
 

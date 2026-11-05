@@ -32,6 +32,7 @@ import { auditRouter } from "./modules/audit/routes";
 import { reportsRouter } from "./modules/reports/routes";
 import { compilerRouter } from "./modules/compiler/routes";
 import { promptRouter } from "./modules/prompt/routes";
+import { documentsRouter } from "./modules/documents/routes";
 
 export function createApp() {
   const app = express();
@@ -79,6 +80,7 @@ export function createApp() {
   api.use("/departments", departmentsRouter);
   api.use("/questions", questionsRouter);
   api.use("/questions-import", questionImportRouter);
+  api.use("/documents", documentsRouter);
   api.use("/sessions", sessionsRouter);
   api.use("/sessions-control", sessionControlRouter);
   api.use("/excel-reports", excelReportRouter);

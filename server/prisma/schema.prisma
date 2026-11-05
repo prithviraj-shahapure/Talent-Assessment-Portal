@@ -122,6 +122,7 @@ model User {
   candidate        CandidateProfile?
   examsCreated     Exam[]              @relation("ExamCreator")
   questionsCreated Question[]          @relation("QuestionCreator")
+  uploadedDocuments ExamDocument[]
   auditLogs        AuditLog[]
   emailTokens      EmailToken[]
   evaluatedAnswers Answer[]            @relation("AnswerEvaluator")
@@ -208,9 +209,14 @@ model Question {
   promptMeta      Json?
   tags            String[]         @default([])
   isActive        Boolean          @default(true)
-  sourceType      String           @default("MANUAL") // MANUAL | TXT_IMPORT | AI_GENERATED
+  sourceType      String           @default("MANUAL") // MANUAL | TXT_IMPORT | AI_GENERATED | EXTRACTED
   approvalStatus  String           @default("APPROVED") // APPROVED | PENDING_REVIEW | REJECTED
   sectionTitle    String?
+  documentId        String?
+  document          ExamDocument?    @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  documentSectionId String?
+  documentSection   DocumentSection? @relation(fields: [documentSectionId], references: [id], onDelete: Cascade)
+  questionOrder     Int              @default(0)
   createdById     String?
   createdBy       User?            @relation("QuestionCreator", fields: [createdById], references: [id])
   createdAt       DateTime         @default(now())
@@ -221,6 +227,7 @@ model Question {
   answers       Answer[]
 
   @@index([categoryId, difficulty, type])
+  @@index([documentId, documentSectionId])
 }
 
 model QuestionOption {
@@ -276,7 +283,8 @@ model Exam {
   attempts    Attempt[]
   accommodations AccommodationRequest[]
   questionImports QuestionImport[]
-  sessions    ExamSession[]
+  documents       ExamDocument[]
+  sessions        ExamSession[]
 }
 
 model ExamSection {
@@ -460,6 +468,52 @@ model QuestionImport {
   createdById      String?
   createdAt        DateTime     @default(now())
   updatedAt        DateTime     @updatedAt
+}
+
+// ───────────────────────── Independent Exam Documents & Sections ─────────────────────────
+
+model ExamDocument {
+  id               String            @id @default(cuid())
+  documentName     String
+  originalFileName String
+  fileType         String            // "docx" | "pdf" | "xlsx" | "csv" | "rtf" | "txt" | "doc"
+  fileSize         Int               @default(0)
+  rawText          String?           @db.Text
+  uploadedAt       DateTime          @default(now())
+  uploadedById     String?
+  uploadedBy       User?             @relation(fields: [uploadedById], references: [id])
+  processingStatus String            @default("PARSED") // "PARSED" | "PROCESSING" | "ASSIGNED" | "ERROR"
+  totalSections    Int               @default(0)
+  totalQuestions   Int               @default(0)
+  assignedStageId  String?           // e.g. "aptitude", "technical", or stage code
+  assignedExamId   String?
+  assignedExam     Exam?             @relation(fields: [assignedExamId], references: [id], onDelete: SetNull)
+  metadata         Json?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+
+  sections         DocumentSection[]
+  questions        Question[]
+
+  @@index([assignedExamId, assignedStageId])
+}
+
+model DocumentSection {
+  id               String       @id @default(cuid())
+  documentId       String
+  document         ExamDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  sectionTitle     String
+  sectionOrder     Int          @default(0)
+  totalQuestions   Int          @default(0)
+  totalMarks       Float        @default(0)
+  timeLimitMinutes Int?
+  difficultyConfig Json?
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  questions        Question[]
+
+  @@index([documentId])
 }
 
 // ───────────────────────── Session Management ─────────────────────────

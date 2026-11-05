@@ -1,9 +1,10 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowLeft, ArrowRight, Check, FileUp, Layers, MoveDown, MoveUp, ShieldCheck, Sparkles } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, Layers, MoveDown, MoveUp, ShieldCheck } from "lucide-react";
 import { Badge, Button, Card, Field, Input, PageHeader, Textarea, useToast } from "@/components/ui";
 import { api } from "@/lib/api";
 import { QuestionReviewModal } from "./QuestionReviewModal";
+import { Step4DocumentManagement } from "./wizard/Step4DocumentManagement";
 
 const AVAILABLE_SECTIONS = [
   { id: "aptitude", title: "Aptitude Test", defaultDuration: 30, defaultQuestions: 30, defaultMarks: 30, passingMarks: 18, type: "APTITUDE", desc: "General numerical, analytical and cognitive problem solving." },
@@ -643,63 +644,19 @@ export default function ExamWizard() {
         </Card>
       )}
 
-      {/* STEP 4: Question Management */}
+      {/* STEP 4: Question Management & Document Paper Generator */}
       {currentStep === 4 && (
         <Card
           title="Step 4: Question Management & Document Paper Generator"
-          subtitle="Generate question papers from Word (.docx/.doc), PDF, Excel, RTF, or text documents or link to the central question bank."
+          subtitle="Upload and manage independent question papers (.docx, .doc, .pdf, .xlsx, .csv, .rtf, .txt). Every document maintains its own sections, questions, and examination stage assignment without merging."
         >
-          <div className="space-y-6">
-            <div className="p-4 bg-navy-900 text-white rounded-lg flex flex-wrap items-center justify-between gap-4">
-              <div>
-                <h4 className="font-semibold text-sm mb-1 flex items-center gap-1.5">
-                  <Sparkles className="h-4 w-4 text-amber-400" /> Upload Questions & Generate Examination
-                </h4>
-                <p className="text-xs text-white/80 max-w-xl">
-                  Upload question papers or study material (.docx, .doc, .pdf, .rtf, .xlsx, .csv, .txt). The extractor automatically parses section headings, MCQ options, correct answers, explanations, marks, and difficulties into structured test stages.
-                </p>
-              </div>
-              <Button
-                variant="secondary"
-                onClick={() => setImportModalOpen(true)}
-                className="bg-white text-navy-900 hover:bg-sand-100 font-semibold"
-              >
-                <FileUp className="h-4 w-4" /> Upload Question Paper
-              </Button>
-            </div>
-
-            {/* Stages overview */}
-            <div className="space-y-3">
-              <h4 className="font-semibold text-xs text-ink-700 uppercase tracking-wider">Configured Examination Stages</h4>
-              <div className="divide-y divide-line border border-line rounded-lg bg-white overflow-hidden text-xs">
-                {selectedSectionIds.map((secId, i) => {
-                  const cfg = sectionsConfig[secId];
-                  return (
-                    <div key={secId} className="p-3.5 flex items-center justify-between gap-3">
-                      <div>
-                        <span className="font-bold text-navy-900">{i + 1}. {cfg.title}</span>
-                        <div className="text-[11px] text-ink-500 mt-0.5">
-                          {cfg.durationMinutes} mins · {cfg.totalMarks} marks · Pass: {cfg.passingMarks}
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => {
-                            setActiveConfigTab(secId);
-                            setImportModalOpen(true);
-                          }}
-                        >
-                          <FileUp className="h-3.5 w-3.5" /> Upload paper for this stage
-                        </Button>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
+          <Step4DocumentManagement
+            selectedSectionIds={selectedSectionIds}
+            sectionsConfig={sectionsConfig}
+            onStageUpdated={() => {
+              toast("Examination stage successfully updated from document.");
+            }}
+          />
         </Card>
       )}
 

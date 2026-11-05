@@ -56,8 +56,33 @@ export interface FirestoreQuestionDoc {
   negativeMarks?: number;
   difficulty: string;
   categoryId?: string | null;
+  documentId?: string | null;
+  sectionId?: string | null;
+  questionOrder?: number;
   promptMeta?: any;
   createdAt: string;
+}
+
+export interface FirestoreExamDocumentDoc {
+  documentId: string;
+  documentName: string;
+  originalFileName: string;
+  fileType: string;
+  uploadedAt: string;
+  uploadedBy?: string | null;
+  processingStatus: string;
+  totalSections: number;
+  totalQuestions: number;
+  assignedStageId?: string | null;
+}
+
+export interface FirestoreDocumentSectionDoc {
+  sectionId: string;
+  documentId: string;
+  sectionTitle: string;
+  sectionOrder: number;
+  totalQuestions: number;
+  totalMarks: number;
 }
 
 export interface FirestoreSubmissionDoc {
@@ -242,6 +267,28 @@ class FirestoreManager {
     await this.writeDoc("evaluationResults", docId, result as any);
   }
 
+  // 7. ExamDocuments Collection
+  async saveExamDocument(doc: FirestoreExamDocumentDoc): Promise<void> {
+    await this.writeDoc("examDocuments", doc.documentId, doc as any);
+  }
+
+  async deleteExamDocument(documentId: string): Promise<void> {
+    // Delete document record in firestore
+    try {
+      if (!this.baseUrl) return;
+      await fetch(`${this.baseUrl}/examDocuments/${encodeURIComponent(documentId)}`, {
+        method: "DELETE",
+      });
+    } catch {
+      // Ignore firestore network errors
+    }
+  }
+
+  // 8. DocumentSections Collection
+  async saveDocumentSection(sec: FirestoreDocumentSectionDoc): Promise<void> {
+    await this.writeDoc("documentSections", sec.sectionId, sec as any);
+  }
+
   // Atomic reservation for session creation (prevents rapid double-generation)
   reserveSessionCode(hash: string, sessionId: string): boolean {
     const now = Date.now();
@@ -255,3 +302,4 @@ class FirestoreManager {
 }
 
 export const firestore = new FirestoreManager();
+
